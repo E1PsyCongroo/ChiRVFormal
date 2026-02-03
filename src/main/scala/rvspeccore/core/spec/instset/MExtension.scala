@@ -6,6 +6,8 @@ import chisel3.util._
 import rvspeccore.core.BaseCore
 import rvspeccore.core.spec._
 import rvspeccore.core.tool.BitTool._
+import rvspeccore.core.tool.CheckTool
+import rvspeccore.core.spec.instset.SizeOp.w
 
 /** “M” Standard Extension Instructions
   *
@@ -40,7 +42,7 @@ trait MExtensionInsts {
   *   - Chapter 7: “M” Standard Extension for Integer Multiplication and
   *     Division, Version 2.0
   */
-trait MExtension extends BaseCore with CommonDecode with MExtensionInsts {
+trait MExtension extends BaseCore with CommonDecode with MExtensionInsts with CheckTool { this: IBase =>
   // - Table 7.1: Semantics for division by zero and division overflow.
   // : L is the width of the operation in bits: XLEN for DIV[U] and REM[U],
   // : or 32 for DIV[U]W and REM[U]W.
@@ -79,41 +81,40 @@ trait MExtension extends BaseCore with CommonDecode with MExtensionInsts {
     )
   }
 
-  def doRV32M: Unit = {
-    // - 7.1 Multiplication Operations
-    // - MUL/MULH[[S]U]
-    when(MUL(inst))    { decodeR; next.reg(rd) := (now.reg(rs1) * now.reg(rs2))(XLEN - 1, 0) }
-    when(MULH(inst))   { decodeR; next.reg(rd) := (now.reg(rs1).asSInt * now.reg(rs2).asSInt).asUInt(XLEN * 2 - 1, XLEN) }
-    when(MULHSU(inst)) { decodeR; next.reg(rd) := (now.reg(rs1).asSInt * now.reg(rs2)).asUInt(XLEN * 2 - 1, XLEN) }
-    when(MULHU(inst))  { decodeR; next.reg(rd) := (now.reg(rs1) * now.reg(rs2))(XLEN * 2 - 1, XLEN) }
-    // - 7.2 Division Operations
-    // - DIV[U]/REM[U]
-    when(DIV(inst))  { decodeR; next.reg(rd) := opDIV(now.reg(rs1), now.reg(rs2), XLEN) }
-    when(DIVU(inst)) { decodeR; next.reg(rd) := opDIVU(now.reg(rs1), now.reg(rs2), XLEN) }
-    when(REM(inst))  { decodeR; next.reg(rd) := opREM(now.reg(rs1), now.reg(rs2), XLEN) }
-    when(REMU(inst)) { decodeR; next.reg(rd) := opREMU(now.reg(rs1), now.reg(rs2), XLEN) }
+  def opMULDIV(rd: UInt, rs1: UInt, rs2: UInt, func: (UInt, UInt) => UInt): Unit = {
+    updateDestReg(rd, func(getSrc1Reg(rs1), getSrc2Reg(rs2)))
   }
 
-  def doRV64M: Unit = {
-    doRV32M
+  def doMExtension(singleInst: Inst): Unit = {
+    singleInst match {
+      case MUL                       => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => (a * b)(XLEN - 1, 0))
+      case MULH                      => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => (a.asSInt * b.asSInt).asUInt(XLEN * 2 - 1, XLEN))
+      case MULHSU                    => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => (a.asSInt * b).asUInt(XLEN * 2 - 1, XLEN))
+      case MULHU                     => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => (a * b)(XLEN * 2 - 1, XLEN))
+      case DIV                       => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => opDIV(a, b, XLEN))
+      case DIVU                      => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => opDIVU(a, b, XLEN))
+      case REM                       => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => opREM(a, b, XLEN))
+      case REMU                      => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => opREMU(a, b, XLEN))
+      case MULW if config.XLEN == 64 => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => signExt((a(31, 0) * b(31, 0))(31, 0), XLEN))
+      case DIVW if config.XLEN == 64 => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => signExt(opDIV(a(31, 0), b(31, 0), 32), XLEN))
 
-    // - 7.1 Multiplication Operations
-    // - MULW
-    when(MULW(inst)) { decodeR; next.reg(rd) := signExt((now.reg(rs1)(31, 0) * now.reg(rs2)(31, 0))(31, 0), XLEN) }
-    // - 7.2 Division Operations
-    // - DIV[U]W/REM[U]W
-    when(DIVW(inst))  { decodeR; next.reg(rd) := signExt(opDIV(now.reg(rs1)(31, 0), now.reg(rs2)(31, 0), 32), XLEN) }
-    when(DIVUW(inst)) { decodeR; next.reg(rd) := signExt(opDIVU(now.reg(rs1)(31, 0), now.reg(rs2)(31, 0), 32), XLEN) }
-    when(REMW(inst))  { decodeR; next.reg(rd) := signExt(opREM(now.reg(rs1)(31, 0), now.reg(rs2)(31, 0), 32), XLEN) }
-    when(REMUW(inst)) { decodeR; next.reg(rd) := signExt(opREMU(now.reg(rs1)(31, 0), now.reg(rs2)(31, 0), 32), XLEN) }
+      case DIVUW if config.XLEN == 64 => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => signExt(opDIVU(a(31, 0), b(31, 0), 32), XLEN))
+      case REMW if config.XLEN == 64  => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => signExt(opREM(a(31, 0), b(31, 0), 32), XLEN))
+      case REMUW if config.XLEN == 64 => decodeR; opMULDIV(rd, rs1, rs2, (a, b) => signExt(opREMU(a(31, 0), b(31, 0), 32), XLEN))
+      case _                          =>
+    }
   }
 
   def doRVM: Unit = {
-    XLEN match {
-      case 32 => doRV32M
-      case 64 => doRV64M
+    val rv32mInsts = Seq(MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU)
+    val rv64mInsts = rv32mInsts ++ Seq(MULW, DIVW, DIVUW, REMW, REMUW)
+
+    config.XLEN match {
+      case 32 => rv32mInsts.map(rv32mInst => when(rv32mInst(inst)) { doMExtension(rv32mInst) })
+      case 64 => rv64mInsts.map(rv64mInst => when(rv64mInst(inst)) { doMExtension(rv64mInst) })
     }
   }
+
 }
 
 // scalafmt: { maxColumn = 120 } (back to defaults)

@@ -5,6 +5,9 @@ import chisel3.util._
 import spec._
 import spec.instset.csr.{CSR, CSRInfoSignal, EventSig, SatpStruct}
 import rvspeccore.checker.ArbitraryRegFile
+import rvspeccore.core.tool.BitTool._
+import rvspeccore.core.spec.instset.csr._
+import rvspeccore.core.spec.instset._
 
 abstract class BaseCore()(implicit val config: RVConfig) extends Module {
   implicit val XLEN: Int = config.XLEN
@@ -130,7 +133,7 @@ object State {
   }
 }
 
-class RiscvTrans()(implicit config: RVConfig) extends BaseCore with RVInstSet {
+class RiscvTrans(singleInstMode: Option[Inst] = None)(implicit config: RVConfig) extends BaseCore with RVInstSet {
   val io = IO(new Bundle {
     // Processor IO
     val inst     = Input(UInt(32.W))
@@ -178,13 +181,26 @@ class RiscvTrans()(implicit config: RVConfig) extends BaseCore with RVInstSet {
     }
 
     // Decode and Excute
-    doRVI
-    if (config.extensions.C) doRVC
-    if (config.extensions.M) doRVM
-    if (config.functions.privileged) doRVPrivileged
-    if (config.extensions.Zicsr) doRVZicsr
-    if (config.extensions.Zifencei) doRVZifencei
-    if (config.extensions.B) doRVB
+    singleInstMode match {
+      case Some(singleInst) => {
+        doIBase(singleInst)
+        if (config.extensions.C) doCExtension(singleInst)
+        if (config.extensions.M) doMExtension(singleInst)
+        if (config.functions.privileged) doPrivileged(singleInst)
+        if (config.extensions.Zicsr) doZicsrExtension(singleInst)
+        if (config.extensions.Zifencei) doZifenceiExecute(singleInst)
+        if (config.extensions.B) doBExtension(singleInst)
+      }
+      case None => {
+        doRVI
+        if (config.extensions.C) doRVC
+        if (config.extensions.M) doRVM
+        if (config.functions.privileged) doRVPrivileged
+        if (config.extensions.Zicsr) doRVZicsr
+        if (config.extensions.Zifencei) doRVZifencei
+        if (config.extensions.B) doRVB
+      }
+    }
 
     // End excute
     next.reg(0) := 0.U
@@ -211,7 +227,7 @@ class RiscvTrans()(implicit config: RVConfig) extends BaseCore with RVInstSet {
   io.specWb <> specWb
 }
 
-class RiscvCore()(implicit config: RVConfig) extends Module {
+class RiscvCore(singleInstMode: Option[Inst] = None)(implicit config: RVConfig) extends Module {
   implicit val XLEN: Int = config.XLEN
 
   val io = IO(new Bundle {
@@ -222,6 +238,7 @@ class RiscvCore()(implicit config: RVConfig) extends Module {
     val mem      = new MemIO
     val tlb      = if (config.functions.tlb) Some(new TLBIO) else None
     // Processor status
+    val sync = Flipped(Valid(State()))
     val now  = Output(State())
     val next = Output(State())
     // Exposed signals
@@ -229,7 +246,7 @@ class RiscvCore()(implicit config: RVConfig) extends Module {
   })
 
   val state = RegInit(State.wireInit())
-  val trans = Module(new RiscvTrans())
+  val trans = Module(new RiscvTrans(singleInstMode))
 
   trans.io.inst  := io.inst
   trans.io.valid := io.valid
@@ -237,7 +254,7 @@ class RiscvCore()(implicit config: RVConfig) extends Module {
   trans.io.tlb.map(_ <> io.tlb.get)
 
   trans.io.now := state
-  state        := trans.io.next
+  state        := Mux(io.sync.valid, io.sync.bits, trans.io.next)
 
   io.now      := state
   io.next     := trans.io.next
