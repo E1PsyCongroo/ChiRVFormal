@@ -16,8 +16,7 @@ class InstCommit()(implicit XLEN: Int) extends Bundle {
   val valid = Bool()
   val inst  = UInt(32.W)
   val pc    = UInt(XLEN.W)
-
-  val npc = UInt(XLEN.W)
+  val npc   = UInt(XLEN.W)
 }
 object InstCommit {
   def apply()(implicit XLEN: Int) = new InstCommit
@@ -71,10 +70,11 @@ class CheckerWithResult(
 
   // link to spec core
   val specCore = Module(new RiscvCore(singleInstMode))
-  specCore.io.valid      := checkInst
-  specCore.io.inst       := io.instCommit.inst
-  specCore.io.sync.valid := io.instCommit.valid && !checkInst
-  specCore.io.sync.bits  := io.result
+  specCore.io.valid        := checkInst
+  specCore.io.inst         := io.instCommit.inst
+  specCore.io.sync.valid   := io.instCommit.valid && !checkInst
+  specCore.io.sync.bits    := io.result
+  specCore.io.sync.bits.pc := io.instCommit.npc
 
   // initial another io.mem.get.Anotherread
   if (config.functions.tlb) {

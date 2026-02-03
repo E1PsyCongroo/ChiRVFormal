@@ -82,6 +82,9 @@ object ConnectHelper {
       checker: CheckerWithResult,
       memDelay: Int
   )(implicit XLEN: Int, config: RVConfig) = {
+    // pc
+    checker.io.result.pc := checker.io.instCommit.pc
+
     // reg
     if (config.formal.arbitraryRegFile) ArbitraryRegFile.init
 
@@ -94,16 +97,14 @@ object ConnectHelper {
     val csr = Wire(CSR())
     csr := DontCare
     BoringUtils.addSink(csr, uniqueIdCSR)
-    checker.io.result.privilege.csr := csr
+    checker.io.result.privilege.csr      := csr
+    checker.io.result.privilege.internal := DontCare
 
     // event
     val event = Wire(new EventSig())
     event := DontCare
     BoringUtils.addSink(event, uniqueIdEvent)
     checker.io.event := event
-
-    checker.io.result.pc                 := DontCare
-    checker.io.result.privilege.internal := DontCare
 
     if (checker.checkMem) {
       val mem = Wire(new MemSig)
