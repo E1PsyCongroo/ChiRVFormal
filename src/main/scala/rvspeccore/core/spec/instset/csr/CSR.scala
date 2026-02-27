@@ -301,15 +301,23 @@ class CSR()(implicit XLEN: Int, config: RVConfig) extends Bundle with IgnoreSeqI
       (if (config.extensions.S) table_S else List())
   }
 
-  val MXLEN  = UInt(8.W)
-  val IALIGN = UInt(8.W) // : the instruction-address alignment constraint the implementation enforces
-  val ILEN   = UInt(8.W) // : the maximum instruction length supported by an implementation
+  // the native base integer ISA width
+  def MXLEN = MuxLookup(misa(31, 30), 32.U(8.W))(
+    Seq(
+      1.U(2.W) -> 32.U(8.W),
+      2.U(2.W) -> 64.U(8.W)
+    )
+  )
+  // the instruction-address alignment constraint the implementation enforces
+  def IALIGN = Mux(misa(2), 16.U(8.W), 32.U(8.W))
+  // the maximum instruction length supported by an implementation
+  def ILEN = 32.U(8.W)
 
   /** Table for all environment variable in this Bundle
     *
     * These environment variables may be changed when CSR changed.
     */
-  val vTable = List(
+  def vTable = List(
     MXLEN,
     IALIGN,
     ILEN
@@ -395,12 +403,6 @@ object CSR {
     // val mstatus = RegInit("ha00002000".U(XLEN.W))
     // val mie = RegInit(0.U(XLEN.W))
     // // TODO: Need Merge End
-    csr.MXLEN := XLEN.U
-    csr.IALIGN := {
-      if (config.extensions.C) 16.U
-      else 32.U
-    }
-    csr.ILEN := 32.U
     csr
   }
 }

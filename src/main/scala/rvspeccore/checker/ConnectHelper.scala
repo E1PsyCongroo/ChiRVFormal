@@ -106,7 +106,7 @@ object ConnectHelper {
     BoringUtils.addSink(event, uniqueIdEvent)
     checker.io.event := event
 
-    if (checker.checkMem) {
+    if (config.formal.checkMem) {
       val mem = Wire(new MemSig)
       mem := DontCare
       BoringUtils.addSink(mem, uniqueIdMem)
@@ -140,7 +140,7 @@ object ConnectHelper {
     checker.io.privilege.csr := csr
 
     // mem
-    if (checker.checkMem) {
+    if (config.formal.checkMem) {
       val mem = Wire(new MemSig)
       mem := DontCare
       BoringUtils.addSink(mem, uniqueIdMem)

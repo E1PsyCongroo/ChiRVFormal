@@ -38,7 +38,6 @@ class StoreOrLoadInfoTLB(implicit XLEN: Int) extends Bundle {
   * `pc` in the result port, but it won't be checked.
   */
 class CheckerWithResult(
-    val checkMem: Boolean = true,
     enableReg: Boolean = false,
     singleInstMode: Option[Inst] = None
 )(implicit
@@ -48,9 +47,9 @@ class CheckerWithResult(
     val instCommit = Input(InstCommit())
     val result     = Input(State())
     val event      = Input(new EventSig())
-    val mem        = if (checkMem) Some(Input(new MemIO)) else None
-    val dtlbmem    = if (checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
-    val itlbmem    = if (checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
+    val mem        = if (config.formal.checkMem) Some(Input(new MemIO)) else None
+    val dtlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
+    val itlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
   })
   // TODO: io.result has .internal states now, consider use it or not
 
@@ -86,7 +85,7 @@ class CheckerWithResult(
   // assertions
 
   specCore.io.mem.read.data := DontCare
-  if (checkMem) {
+  if (config.formal.checkMem) {
     val ignoreMem = io.instCommit.valid && !checkInst
     val loadQueue = Module(new Queue(new StoreOrLoadInfo, 1, true, true))
     loadQueue.io.enq.valid         := io.mem.get.read.valid
@@ -143,7 +142,8 @@ class CheckerWithResult(
   when(regDelay(checkInst)) {
     // now pc:
     assert(regDelay(io.instCommit.pc) === regDelay(specCore.io.now.pc))
-    // next pc: hard to get next pc in a pipeline, check it at next instruction
+    // next pc: hard to get next pc in a pipeline, it's ok to check it at next instruction
+    if (config.formal.checkNPC) assert(regDelay(io.instCommit.npc) === regDelay(specCore.io.next.pc))
     // next csr:
     if (config.formal.checkCSRs) {
       io.result.privilege.csr.table.zip(specCore.io.next.privilege.csr.table).map {
@@ -195,10 +195,8 @@ object WriteBack {
   * before DUT execute the instruction. wb contains some writeback signal.
   */
 class CheckerWithWB(
-    val checkMem: Boolean = true,
     enableReg: Boolean = true,
-    singleInstMode: Option[Inst] = None,
-    checkNPC: Boolean = false
+    singleInstMode: Option[Inst] = None
 )(implicit
     config: RVConfig
 ) extends Checker {
@@ -206,9 +204,9 @@ class CheckerWithWB(
     val instCommit = Input(InstCommit())
     val wb         = Input(WriteBack())
     val privilege  = Input(PrivilegedState())
-    val mem        = if (checkMem) Some(Input(new MemIO)) else None
-    val dtlbmem    = if (checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
-    val itlbmem    = if (checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
+    val mem        = if (config.formal.checkMem) Some(Input(new MemIO)) else None
+    val dtlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
+    val itlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
   })
 
   def regDelay[T <: Data](data: T): T = {
@@ -243,7 +241,7 @@ class CheckerWithWB(
 
   // check memory behavior
   specCore.io.mem.read.data := DontCare
-  if (checkMem) {
+  if (config.formal.checkMem) {
     val ignoreMem = io.instCommit.valid && !checkInst
     val loadQueue = Module(new Queue(new StoreOrLoadInfo, 1, true, true))
     loadQueue.io.enq.valid         := io.mem.get.read.valid
@@ -295,9 +293,7 @@ class CheckerWithWB(
   }
 
   when(regDelay(checkInst)) {
-    if (checkNPC) {
-      assert(regDelay(io.instCommit.npc) === regDelay(specCoreNpcs(31, 0)))
-    }
+    if (config.formal.checkNPC) assert(regDelay(io.instCommit.npc) === regDelay(specCoreNpcs(31, 0)))
 
     when(regDelay(specCoreWBValid) && regDelay(io.wb.valid)) {
       // if reference and dut all raise the valid, compare the dest and the data

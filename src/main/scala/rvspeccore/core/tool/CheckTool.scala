@@ -7,7 +7,7 @@ trait CheckTool extends BaseCore {
   def updateDestReg(rd_addr: UInt, rd_data: UInt): Unit = {
     specWb.rd_en      := true.B
     specWb.rd_addr    := rd_addr
-    specWb.rd_data    := next.reg(rd_addr)
+    specWb.rd_data    := rd_data
     next.reg(rd_addr) := rd_data
   }
 

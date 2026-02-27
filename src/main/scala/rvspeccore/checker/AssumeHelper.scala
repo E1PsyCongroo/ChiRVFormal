@@ -145,34 +145,34 @@ object RVPrivileged extends AssumeHelper with spec.instset.PrivilegedInsts {
 }
 object RVB extends AssumeHelper with spec.instset.BExtensionInsts {
   val zba = AssumeHelper(
-    List(sh1add, sh2add, sh3add),
-    List(add_uw, sh1add_uw, sh2add_uw, sh3add_uw, slli_uw)
+    List(SH1ADD, SH2ADD, SH3ADD),
+    List(ADD_UW, SH1ADD_UW, SH2ADD_UW, SH3ADD_UW, SLLI_UW)
   )
 
   val zbb = AssumeHelper(
-    List(andn, orn, xnor, clz, ctz, cpop, max, maxu, min, minu, sext_b, sext_h, zext_h, rol, ror, rori, orc_b, rev8),
-    List(clzw, ctzw, cpopw, rolw, roriw, rorw)
+    List(ANDN, ORN, XNOR, CLZ, CTZ, CPOP, MAX, MAXU, MIN, MINU, SEXT_B, SEXT_H, ZEXT_H, ROL, ROR, RORI, ORC_B, REV8),
+    List(CLZW, CTZW, CPOPW, ROLW, RORIW, RORW)
   )
 
   val zbc = AssumeHelper(
-    List(clmul, clmulh, clmulr)
+    List(CLMUL, CLMULH, CLMULR)
   )
 
   val zbs = AssumeHelper(
-    List(bclr, bclri, bext, bexti, binv, binvi, bset, bseti)
+    List(BCLR, BCLRI, BEXT, BEXTI, BINV, BINVI, BSET, BSETI)
   )
 
   val zbkb = AssumeHelper(
-    List(rol, ror, rori, andn, orn, xnor, pack, packh, rev8, brev8, zip, unzip),
-    List(rolw, roriw, rorw, packw)
+    List(ROL, ROR, RORI, ANDN, ORN, XNOR, PACK, PACKH, REV8, BREV8, ZIP, UNZIP),
+    List(ROLW, RORIW, RORW, PACKW)
   )
 
   val zbkc = AssumeHelper(
-    List(clmul, clmulh)
+    List(CLMUL, CLMULH)
   )
 
   val zbkx = AssumeHelper(
-    List(xperm8, xperm4)
+    List(XPERM8, XPERM4)
   )
 
   val partition: Seq[AssumeHelper] = List(zba, zbb, zbc, zbs, zbkb, zbkc, zbkx)

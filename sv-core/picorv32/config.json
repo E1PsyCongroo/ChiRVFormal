@@ -1,0 +1,10 @@
+{
+  "xlen": 32,
+  "extensions": ["I", "C", "M"],
+  "fakeExtensions": [],
+  "initValue": {"pc": "0x80000000"},
+  "functions": [],
+  "formal": ["CheckMem", "CheckNPC"],
+  "regDelay": true,
+  "singleInstMode": null
+}

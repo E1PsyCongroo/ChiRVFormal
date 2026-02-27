@@ -25,7 +25,7 @@ case class RVConfig(configs: (String, Any)*) {
     "fakeExtensions" -> "ABCDEFGHIJKLMNOPQRSTUVWXYZ".map(_.toString).toSet,
     "initValue"      -> Set("pc", "mstatus", "mtvec"),
     "functions"      -> Set("Privileged", "TLB"),
-    "formal"         -> Set("ArbitraryRegFile", "CheckCSRs")
+    "formal"         -> Set("ArbitraryRegFile", "CheckMem", "CheckNPC", "CheckCSRs")
   )
   private val cfgs = configs.toMap
 
@@ -130,6 +130,8 @@ case class RVConfig(configs: (String, Any)*) {
     )
 
     val arbitraryRegFile: Boolean = raw.contains("ArbitraryRegFile")
+    val checkMem: Boolean         = raw.contains("CheckMem")
+    val checkNPC: Boolean         = raw.contains("CheckNPC")
     val checkCSRs: Boolean        = raw.contains("CheckCSRs")
   }
 

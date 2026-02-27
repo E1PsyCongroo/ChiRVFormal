@@ -3,11 +3,9 @@ package rvspeccore.core
 import chisel3._
 import chisel3.util._
 import spec._
-import spec.instset.csr.{CSR, CSRInfoSignal, EventSig, SatpStruct}
+import spec.instset._
+import spec.instset.csr._
 import rvspeccore.checker.ArbitraryRegFile
-import rvspeccore.core.tool.BitTool._
-import rvspeccore.core.spec.instset.csr._
-import rvspeccore.core.spec.instset._
 
 abstract class BaseCore()(implicit val config: RVConfig) extends Module {
   implicit val XLEN: Int = config.XLEN
@@ -68,6 +66,10 @@ class WriteMemIO()(implicit XLEN: Int) extends Bundle {
 class MemIO()(implicit XLEN: Int) extends Bundle {
   val read  = new ReadMemIO
   val write = new WriteMemIO
+}
+
+object MemIO {
+  def apply()(implicit XLEN: Int): MemIO = new MemIO
 }
 
 class TLBIO()(implicit XLEN: Int) extends Bundle {
