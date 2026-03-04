@@ -136,3 +136,6 @@ And then perform formal verification using BMC through ChiselTest.
 If our work has been helpful to you, please cite:
 
 **SETTA 2024: Formal Verification of RISC-V Processor Chisel Designs** [Link](https://link.springer.com/chapter/10.1007/978-981-96-0602-3_8) | [BibTex](https://citation-needed.springer.com/v2/references/10.1007/978-981-96-0602-3_8?format=bibtex&flavour=citation)
+
+
+**JSA 2026: χRVFormal: Formal Verification of RISC-V Processor Chisel Designs** [Link](https://doi.org/10.1016/j.sysarc.2026.103761) | [BibTex](https://www.sciencedirect.com/sdfe/arp/cite?pii=S1383762126000792&format=text%2Fx-bibtex&withabstract=true)
