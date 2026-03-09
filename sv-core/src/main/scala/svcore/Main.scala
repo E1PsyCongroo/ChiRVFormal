@@ -30,7 +30,7 @@ object Args {
           case "writeback" | "state" | "assume" => success
           case _                                => failure("unsupported model (supported: writeback, state, assume)")
         }
-        .text("core model to generate (default: writeback)"),
+        .text("check model to generate (default: writeback)"),
       opt[String]('t', "target-dir")
         .valueName("<directory>")
         .action((x, c) => c.copy(targetDir = x))

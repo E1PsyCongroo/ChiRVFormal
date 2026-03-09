@@ -10,22 +10,18 @@ import rvspeccore.core.spec._
 import rvspeccore.core.spec.instset._
 import rvspeccore.core.spec.instset.csr._
 
-class CheckerWithResultSpec extends AnyFlatSpec with ChiselScalatestTester {
-  behavior of "CheckerWithResult"
+class CheckerWithStateSpec extends AnyFlatSpec with ChiselScalatestTester {
+  behavior of "CheckerWithState"
 
   class TestCore(enableReg: Boolean = false)(implicit val config: RVConfig) extends RiscvCore {
-    val checker = Module(new CheckerWithResult(enableReg, None))
-    checker.io.instCommit.valid    := RegNext(io.valid, false.B)
-    checker.io.instCommit.inst     := RegNext(io.inst)
-    checker.io.instCommit.pc       := RegNext(state.pc)
-    checker.io.instCommit.npc      := DontCare
-    checker.io.event.valid         := RegNext(io.event.valid, false.B)
-    checker.io.event.intrNO        := RegNext(io.event.intrNO)
-    checker.io.event.cause         := RegNext(io.event.cause)
-    checker.io.event.exceptionPC   := RegNext(io.event.exceptionPC)
-    checker.io.event.exceptionInst := RegNext(io.event.exceptionInst)
+    val checker = Module(new CheckerWithState(enableReg, None))
+    checker.io.instCommit.valid := RegNext(io.valid, false.B)
+    checker.io.instCommit.excp  := RegNext(trans.io.commit.exception, false.B)
+    checker.io.instCommit.inst  := RegNext(io.inst)
+    checker.io.instCommit.pc    := RegNext(state.pc)
+    checker.io.instCommit.npc   := DontCare
     // printf("[  DUT   ] Valid:%x PC: %x Inst: %x\n", checker.io.instCommit.valid, checker.io.instCommit.pc, checker.io.instCommit.inst)
-    checker.io.result := state
+    checker.io.state := state
 
     checker.io.itlbmem.map(cm => {
       cm := DontCare
@@ -47,8 +43,6 @@ class CheckerWithResultSpec extends AnyFlatSpec with ChiselScalatestTester {
       cm.write.valid    := RegNext(trans.io.mem.write.valid)
     })
   }
-
-  behavior of "CheckerWithResult"
 
   it should "pass RiscvTests[mem check: off, reg delay: off]" in {
     val tests = Seq(
@@ -102,46 +96,40 @@ class CheckerWithResultSpec extends AnyFlatSpec with ChiselScalatestTester {
     )
   }
 }
+
 // We have to extract some signals from RiscvCore, but it certainly modify the structure of the RiscvCore
 // This can't be solved until we discuss with YiCheng about it.
 class CheckerWithWBSpec extends AnyFlatSpec with ChiselScalatestTester {
   behavior of "CheckerWithWB"
 
   class TestCore(enableReg: Boolean = false)(implicit val config: RVConfig) extends RiscvCore {
-    val wb = Wire(new WriteBack)
+    val writeback = Wire(WriteBack())
 
-    wb := 0.U.asTypeOf(new WriteBack)
+    writeback := 0.U.asTypeOf(WriteBack())
 
-    wb.valid   := trans.io.specWb.rd_en
-    wb.dest    := trans.io.specWb.rd_addr
-    wb.data    := trans.io.specWb.rd_data
-    wb.csrAddr := trans.io.specWb.csr_addr
-    wb.r1Addr  := trans.io.specWb.rs1_addr
-    wb.r2Addr  := trans.io.specWb.rs2_addr
-    wb.r1Data  := state.reg(wb.r1Addr)
-    wb.r2Data  := state.reg(wb.r2Addr)
-
-    trans.io.next.privilege.csr.table.foreach { case (CSRInfoSignal(info, nextCSR)) =>
-      when(wb.csrAddr === info.addr) {
-        wb.csrNdata := nextCSR
-      }
-    }
-    wb.csrWr := trans.io.specWb.csr_wr
+    writeback.rs1Addr  := trans.io.commit.rs1Addr
+    writeback.rs2Addr  := trans.io.commit.rs2Addr
+    writeback.rs1Data  := state.reg(writeback.rs1Addr)
+    writeback.rs2Data  := state.reg(writeback.rs2Addr)
+    writeback.rdAddr   := trans.io.commit.rdAddr
+    writeback.rdData   := trans.io.commit.rdData
+    writeback.csrWr    := trans.io.commit.csrWr
+    writeback.csrAddr  := trans.io.commit.csrAddr
+    writeback.csrNdata := trans.io.commit.csrNdata
 
     val checker = Module(new CheckerWithWB(enableReg))
     checker.io.instCommit.valid := io.valid
+    checker.io.instCommit.excp  := trans.io.commit.exception
     checker.io.instCommit.inst  := io.inst
     checker.io.instCommit.pc    := state.pc
     checker.io.instCommit.npc   := trans.io.next.pc
 
-    checker.io.wb := wb
+    checker.io.writeback := writeback
 
     checker.io.privilege := state.privilege
 
     checker.io.mem.map(_ := trans.io.mem)
   }
-
-  behavior of "CheckerWithWB"
 
   it should "pass RiscvTests[mem check: off, reg delay: off]" in {
     val tests = Seq(

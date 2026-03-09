@@ -139,54 +139,50 @@ trait CExtension extends BaseCore with CDecode with CExtensionInsts with LoadSto
       case C_LWSP =>
         decodeCI
         imm := zeroExt(reorder(5, (4, 2), (7, 6))(inst, 12, (6, 2)), XLEN)
-        updateDestReg(rd, signExt(memRead(getSrc1Reg(2.U) + imm, 32.U)(31, 0), XLEN))
+        val (data, excp) = memRead(getSrc1Reg(2.U) + imm, 32.U)
+        when(!excp) { updateDestReg(rd, signExt(data(31, 0), XLEN)) }
       case C_SWSP =>
         decodeCSS
         imm := zeroExt(reorder((5, 2), (7, 6))(inst, (12, 7)), XLEN)
-        memWrite(getSrc1Reg(2.U) + imm, 32.U, getSrc2Reg(rs2)(31, 0))
+        memWrite(getSrc1Reg(2.U) + imm, 32.U, getSrc2Reg(rs2))
       case C_LW =>
         decodeCL
         imm := zeroExt(reorder((5, 3), 2, (6, 6))(inst, (12, 10), (6, 5)), XLEN)
-        updateDestReg(cat01(rdP), signExt(memRead(getSrc1Reg(cat01(rs1P)) + imm, 32.U)(31, 0), XLEN))
+        val (data, excp) = memRead(getSrc1Reg(cat01(rs1P)) + imm, 32.U)
+        when(!excp) { updateDestReg(cat01(rdP), signExt(data(31, 0), XLEN)) }
       case C_SW =>
         decodeCS
         imm := zeroExt(reorder((5, 3), 2, 6)(inst, (12, 10), (6, 5)), XLEN)
         memWrite(getSrc1Reg(cat01(rs1P)) + imm, 32.U, getSrc2Reg(cat01(rs2P)))
       case C_J =>
         decodeCJ
-        imm               := signExt(reorder(11, 4, (9, 8), 10, 6, 7, (3, 1), 5)(inst, (12, 2)), XLEN)
-        global_data.setpc := true.B
-        next.pc           := now.pc + imm
+        imm := signExt(reorder(11, 4, (9, 8), 10, 6, 7, (3, 1), 5)(inst, (12, 2)), XLEN)
+        setPC(now.pc + imm)
       case C_JAL =>
         decodeCJ
-        imm               := signExt(reorder(11, 4, (9, 8), 10, 6, 7, (3, 1), 5)(inst, (12, 2)), XLEN)
-        global_data.setpc := true.B
-        next.pc           := now.pc + imm
+        imm := signExt(reorder(11, 4, (9, 8), 10, 6, 7, (3, 1), 5)(inst, (12, 2)), XLEN)
+        setPC(now.pc + imm)
         updateDestReg(1.U, now.pc + 2.U)
       case C_JR =>
         decodeCR
-        global_data.setpc := true.B
         // setting the least-significant to zero according to JALR in RVI
-        next.pc := Cat(getSrc1Reg(rs1)(XLEN - 1, 1), 0.U(1.W))
+        setPC(Cat(getSrc1Reg(rs1)(XLEN - 1, 1), 0.U(1.W)))
       case C_JALR =>
         decodeCR
-        global_data.setpc := true.B
         // setting the least-significant to zero according to JALR in RVI
-        next.pc := Cat(getSrc1Reg(rs1)(XLEN - 1, 1), 0.U(1.W))
+        setPC(Cat(getSrc1Reg(rs1)(XLEN - 1, 1), 0.U(1.W)))
         updateDestReg(1.U, now.pc + 2.U)
       case C_BEQZ =>
         decodeCB
         imm := signExt(reorder(8, (4, 3), (7, 6), (2, 1), 5)(inst, (12, 10), (6, 2)), XLEN)
         when(getSrc1Reg(cat01(rs1P)) === 0.U) {
-          global_data.setpc := true.B
-          next.pc           := now.pc + imm
+          setPC(now.pc + imm)
         }
       case C_BNEZ =>
         decodeCB
         imm := signExt(reorder(8, (4, 3), (7, 6), (2, 1), 5)(inst, (12, 10), (6, 2)), XLEN)
         when(getSrc1Reg(cat01(rs1P)) =/= 0.U) {
-          global_data.setpc := true.B
-          next.pc           := now.pc + imm
+          setPC(now.pc + imm)
         }
       case C_LI =>
         decodeCI
@@ -246,15 +242,17 @@ trait CExtension extends BaseCore with CDecode with CExtensionInsts with LoadSto
       case C_LDSP if config.XLEN == 64 =>
         decodeCI
         imm := zeroExt(reorder(5, (4, 3), (8, 6))(inst, 12, (6, 2)), XLEN)
-        updateDestReg(rd, signExt(memRead(getSrc1Reg(2.U) + imm, 64.U)(63, 0), XLEN))
+        val (data, excp) = memRead(getSrc1Reg(2.U) + imm, 64.U)
+        when(!excp) { updateDestReg(rd, signExt(data(63, 0), XLEN)) }
       case C_SDSP if config.XLEN == 64 =>
         decodeCSS
         imm := zeroExt(reorder((5, 3), (8, 6))(inst, (12, 7)), XLEN)
-        memWrite(getSrc1Reg(2.U) + imm, 64.U, getSrc2Reg(rs2)(63, 0))
+        memWrite(getSrc1Reg(2.U) + imm, 64.U, getSrc2Reg(rs2))
       case C_LD if config.XLEN == 64 =>
         decodeCL
         imm := zeroExt(reorder((5, 3), (7, 6))(inst, (12, 10), (6, 5)), XLEN)
-        updateDestReg(cat01(rdP), signExt(memRead(getSrc1Reg(cat01(rs1P)) + imm, 64.U)(63, 0), XLEN))
+        val (data, excp) = memRead(getSrc1Reg(cat01(rs1P)) + imm, 64.U)
+        when(!excp) { updateDestReg(cat01(rdP), signExt(data(63, 0), XLEN)) }
       case C_SD if config.XLEN == 64 =>
         decodeCS
         imm := zeroExt(reorder((5, 3), (7, 6))(inst, (12, 10), (6, 5)), XLEN)

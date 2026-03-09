@@ -15,15 +15,16 @@ Read more detailed Chinese README: [中文说明](README.zh-CN.md).
 
 ## Table of Contents <!-- omit in toc -->
 
-- [Usage](#usage)
-  - [Import dependency](#import-dependency)
-  - [Add Checker and Set Basic Instruction Information](#add-checker-and-set-basic-instruction-information)
-  - [General Register](#general-register)
-  - [CSR and Exception](#csr-and-exception)
-  - [TLB](#tlb)
-  - [Memory Access](#memory-access)
-- [Verification Example](#verification-example)
-- [Publications](#publications)
+- [χRVFormal](#χrvformal)
+  - [Usage](#usage)
+    - [Import dependency](#import-dependency)
+    - [Add Checker and Set Basic Instruction Information](#add-checker-and-set-basic-instruction-information)
+    - [General Register](#general-register)
+    - [CSR and Exception](#csr-and-exception)
+    - [TLB](#tlb)
+    - [Memory Access](#memory-access)
+  - [Verification Example](#verification-example)
+  - [Publications](#publications)
 
 ## Usage
 
@@ -45,9 +46,10 @@ module at the instruction commit level.
 
 ```scala
 val rvConfig = RVConfig(64, "MCS", "A")
-val checker = Module(new CheckerWithResult(checkMem = true)(rvConfig))
+val checker = Module(new CheckerWithState(checkMem = true)(rvConfig))
 
 checker.io.instCommit.valid := XXX
+checker.io.instCommit.excp  := XXX
 checker.io.instCommit.inst  := XXX
 checker.io.instCommit.pc    := XXX
 
@@ -126,7 +128,7 @@ when(backend.io.dmem.resp.fire) {
 
 ## Verification Example
 
-[nutshell-fv](https://github.com/iscas-tis/nutshell-fv)  
+[nutshell-fv](https://github.com/iscas-tis/nutshell-fv)
 In this example of processor design, we modified the code to get a verifiable
 system with reference model.
 And then perform formal verification using BMC through ChiselTest.

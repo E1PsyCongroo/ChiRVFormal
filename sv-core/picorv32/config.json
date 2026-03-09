@@ -2,9 +2,9 @@
   "xlen": 32,
   "extensions": ["I", "C", "M"],
   "fakeExtensions": [],
-  "initValue": {"pc": "0x80000000"},
+  "initValue": {"pc": "h8000_0000", "mtvec": "h8000_8000"},
   "functions": [],
   "formal": ["CheckMem", "CheckNPC"],
-  "regDelay": true,
+  "regDelay": false,
   "singleInstMode": null
 }

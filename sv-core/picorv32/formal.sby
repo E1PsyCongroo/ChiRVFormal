@@ -8,12 +8,13 @@ skip 20
 smtbmc boolector
 
 [script]
-read -sv defines.sv picorv32.v CombAssume.sv InstAssume.sv WriteBackChecker.sv testbench.sv
+read -sv defines.sv picorv32.v wrapper.sv CombAssume.sv InstAssume.sv WriteBackChecker.sv testbench.sv
 prep -flatten -nordff -top testbench
 chformal -early
 
 [files]
 picorv32.v
+wrapper.sv
 CombAssume.sv
 InstAssume.sv
 WriteBackChecker.sv
@@ -21,6 +22,8 @@ testbench.sv
 
 [file defines.sv]
 `define RISCV_FORMAL
+`define RISCV_FORMAL_CHECK_CYCLE 20
 `define DEBUGNETS
 `define DEBUGREGS
+`define PICORV32_TESTTRAP
 `define PICORV32_TESTBUG_NONE

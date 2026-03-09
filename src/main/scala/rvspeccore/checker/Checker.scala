@@ -3,17 +3,13 @@ package rvspeccore.checker
 import chisel3._
 import chisel3.util._
 import rvspeccore.core._
-import rvspeccore.core.spec.Inst
-import rvspeccore.core.spec.instset.csr.{CSR, CSRInfoSignal, EventSig}
-import rvspeccore.core.tool.TLBMemInfo
-import rvspeccore.core.tool.TLBSig
-
-abstract class Checker()(implicit config: RVConfig) extends Module {
-  implicit val XLEN: Int = config.XLEN
-}
+import rvspeccore.core.spec._
+import rvspeccore.core.spec.instset.csr._
+import rvspeccore.core.tool._
 
 class InstCommit()(implicit XLEN: Int) extends Bundle {
   val valid = Bool()
+  val excp  = Bool()
   val inst  = UInt(32.W)
   val pc    = UInt(XLEN.W)
   val npc   = UInt(XLEN.W)
@@ -21,37 +17,27 @@ class InstCommit()(implicit XLEN: Int) extends Bundle {
 object InstCommit {
   def apply()(implicit XLEN: Int) = new InstCommit
 }
+
 class StoreOrLoadInfo(implicit XLEN: Int) extends Bundle {
   val addr     = UInt(XLEN.W)
   val data     = UInt(XLEN.W)
   val memWidth = UInt(log2Ceil(XLEN + 1).W)
 }
+object StoreOrLoadInfo {
+  def apply()(implicit XLEN: Int) = new StoreOrLoadInfo
+}
+
 class StoreOrLoadInfoTLB(implicit XLEN: Int) extends Bundle {
   val addr  = UInt(XLEN.W)
   val data  = UInt(XLEN.W)
   val level = UInt(log2Ceil(XLEN + 1).W)
 }
+object StoreOrLoadInfoTLB {
+  def apply()(implicit XLEN: Int) = new StoreOrLoadInfoTLB
+}
 
-/** Checker with result port.
-  *
-  * Check pc of commited instruction and next value of all register. Although
-  * `pc` in the result port, but it won't be checked.
-  */
-class CheckerWithResult(
-    enableReg: Boolean = false,
-    singleInstMode: Option[Inst] = None
-)(implicit
-    config: RVConfig
-) extends Checker {
-  val io = IO(new Bundle {
-    val instCommit = Input(InstCommit())
-    val result     = Input(State())
-    val event      = Input(new EventSig())
-    val mem        = if (config.formal.checkMem) Some(Input(new MemIO)) else None
-    val dtlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
-    val itlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
-  })
-  // TODO: io.result has .internal states now, consider use it or not
+abstract class Checker(enableReg: Boolean = false)(implicit config: RVConfig) extends Module {
+  implicit val XLEN: Int = config.XLEN
 
   /** Delay input data by a register if `delay` is true.
     *
@@ -61,6 +47,28 @@ class CheckerWithResult(
   def regDelay[T <: Data](data: T): T = {
     if (enableReg) RegNext(data, 0.U.asTypeOf(data.cloneType)) else data
   }
+
+}
+
+/** Checker with result port.
+  *
+  * Check pc of commited instruction and next value of all register. Although
+  * `pc` in the result port, but it won't be checked.
+  */
+class CheckerWithState(
+    enableReg: Boolean = false,
+    singleInstMode: Option[Inst] = None
+)(implicit
+    config: RVConfig
+) extends Checker {
+  val io = IO(new Bundle {
+    val instCommit = Input(InstCommit())
+    val state      = Input(State())
+    val mem        = if (config.formal.checkMem) Some(Input(MemIO())) else None
+    val dtlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(TLBSig())) else None
+    val itlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(TLBSig())) else None
+  })
+  // TODO: io.result has .internal states now, consider use it or not
 
   val checkInst = io.instCommit.valid && (singleInstMode match {
     case Some(inst) => inst(io.instCommit.inst)
@@ -72,7 +80,7 @@ class CheckerWithResult(
   specCore.io.valid        := checkInst
   specCore.io.inst         := io.instCommit.inst
   specCore.io.sync.valid   := io.instCommit.valid && !checkInst
-  specCore.io.sync.bits    := io.result
+  specCore.io.sync.bits    := io.state
   specCore.io.sync.bits.pc := io.instCommit.npc
 
   // initial another io.mem.get.Anotherread
@@ -83,10 +91,9 @@ class CheckerWithResult(
   }
 
   // assertions
-
   specCore.io.mem.read.data := DontCare
   if (config.formal.checkMem) {
-    val ignoreMem = io.instCommit.valid && !checkInst
+    val ignoreMem = io.instCommit.valid && (io.instCommit.excp || !checkInst)
     val loadQueue = Module(new Queue(new StoreOrLoadInfo, 1, true, true))
     loadQueue.io.enq.valid         := io.mem.get.read.valid
     loadQueue.io.enq.bits.addr     := io.mem.get.read.addr
@@ -97,6 +104,7 @@ class CheckerWithResult(
     specCore.io.mem.read.data := loadQueue.io.deq.bits.data
     when(regDelay(specCore.io.mem.read.valid)) {
       // printf("[SpecCore] Load Queue Valid: %x %x %x %x\n", loadQueue.io.deq.valid, loadQueue.io.deq.bits.addr, loadQueue.io.deq.bits.data, loadQueue.io.deq.bits.memWidth)
+      assert(!regDelay(io.instCommit.excp))
       assert(regDelay(loadQueue.io.deq.bits.addr) === regDelay(specCore.io.mem.read.addr))
       assert(regDelay(loadQueue.io.deq.bits.memWidth) === regDelay(specCore.io.mem.read.memWidth))
     }
@@ -110,9 +118,11 @@ class CheckerWithResult(
     storeQueue.io.deq.ready := specCore.io.mem.write.valid || ignoreMem
     when(regDelay(specCore.io.mem.write.valid)) {
       // printf("[SpecCore] store Queue Valid: %x %x %x %x\n", storeQueue.io.deq.valid, storeQueue.io.deq.bits.addr, storeQueue.io.deq.bits.data, storeQueue.io.deq.bits.memWidth)
+      assert(!regDelay(io.instCommit.excp))
       assert(regDelay(storeQueue.io.deq.bits.addr) === regDelay(specCore.io.mem.write.addr))
-      assert(regDelay(storeQueue.io.deq.bits.data) === regDelay(specCore.io.mem.write.data))
       assert(regDelay(storeQueue.io.deq.bits.memWidth) === regDelay(specCore.io.mem.write.memWidth))
+      val storeDataMask = specCore.trans.width2Mask(specCore.io.mem.write.memWidth)
+      assert(((regDelay(storeQueue.io.deq.bits.data) ^ regDelay(specCore.io.mem.write.data)) & storeDataMask) === 0.U)
     }
 
     if (config.functions.tlb) {
@@ -144,46 +154,37 @@ class CheckerWithResult(
     assert(regDelay(io.instCommit.pc) === regDelay(specCore.io.now.pc))
     // next pc: hard to get next pc in a pipeline, it's ok to check it at next instruction
     if (config.formal.checkNPC) assert(regDelay(io.instCommit.npc) === regDelay(specCore.io.next.pc))
-    // next csr:
-    if (config.formal.checkCSRs) {
-      io.result.privilege.csr.table.zip(specCore.io.next.privilege.csr.table).map {
-        case (result, next) => {
-          assert(regDelay(result.signal) === regDelay(next.signal))
-        }
-      }
-    }
+
     // next reg
     for (i <- 0 until 32) {
-      assert(regDelay(io.result.reg(i.U)) === regDelay(specCore.io.next.reg(i.U)))
+      assert(regDelay(io.state.reg(i.U)) === regDelay(specCore.io.next.reg(i.U)))
     }
 
-    when(regDelay(io.event.valid) || regDelay(specCore.io.event.valid)) {
-      // Make sure DUT and specCore currently occur the same exception
-      assert(regDelay(io.event.valid) === regDelay(specCore.io.event.valid))
-      assert(regDelay(io.event.intrNO) === regDelay(specCore.io.event.intrNO))
-      assert(regDelay(io.event.cause) === regDelay(specCore.io.event.cause))
-      assert(regDelay(io.event.exceptionPC) === regDelay(specCore.io.event.exceptionPC))
-      assert(regDelay(io.event.exceptionInst) === regDelay(specCore.io.event.exceptionInst))
+    // next csr:
+    if (config.formal.checkCSRs) {
+      io.state.privilege.csr.table.zip(specCore.io.next.privilege.csr.table).map {
+        case (dut, spec) => {
+          assert(regDelay(dut.signal) === regDelay(spec.signal))
+        }
+      }
     }
   }
 
 }
 
 class WriteBack()(implicit XLEN: Int) extends Bundle {
-  val valid = Bool()
-  val dest  = UInt(5.W)
-  val data  = UInt(XLEN.W)
+  val rs1Addr = UInt(5.W)
+  val rs2Addr = UInt(5.W)
+  val rs1Data = UInt(XLEN.W)
+  val rs2Data = UInt(XLEN.W)
 
-  val r1Addr = UInt(5.W)
-  val r2Addr = UInt(5.W)
-  val r1Data = UInt(XLEN.W)
-  val r2Data = UInt(XLEN.W)
+  val rdAddr = UInt(5.W)
+  val rdData = UInt(XLEN.W)
 
+  val csrWr    = Bool()
   val csrAddr  = UInt(12.W)
   val csrNdata = UInt(64.W)
-  val csrWr    = Bool()
 }
-
 object WriteBack {
   def apply()(implicit XLEN: Int) = new WriteBack
 }
@@ -202,16 +203,12 @@ class CheckerWithWB(
 ) extends Checker {
   val io = IO(new Bundle {
     val instCommit = Input(InstCommit())
-    val wb         = Input(WriteBack())
+    val writeback  = Input(WriteBack())
     val privilege  = Input(PrivilegedState())
     val mem        = if (config.formal.checkMem) Some(Input(new MemIO)) else None
     val dtlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
     val itlbmem    = if (config.formal.checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
   })
-
-  def regDelay[T <: Data](data: T): T = {
-    if (enableReg) RegNext(data, 0.U.asTypeOf(data.cloneType)) else data
-  }
 
   val checkInst = io.instCommit.valid && (singleInstMode match {
     case Some(inst) => inst(io.instCommit.inst)
@@ -220,40 +217,39 @@ class CheckerWithWB(
   // link to spec core
   val specCore = Module(new RiscvTrans(singleInstMode))
 
-  specCore.io.now                   := 0.U.asTypeOf(new State)
-  specCore.io.now.privilege         := io.privilege
-  specCore.io.now.pc                := io.instCommit.pc
-  specCore.io.now.reg(io.wb.r1Addr) := io.wb.r1Data
+  specCore.io.now                           := 0.U.asTypeOf(new State)
+  specCore.io.now.privilege                 := io.privilege
+  specCore.io.now.pc                        := io.instCommit.pc
+  specCore.io.now.reg(io.writeback.rs1Addr) := io.writeback.rs1Data
   // if r1addr == r2addr and rs2 is not use, the value of rs1 should not be cover by the value of rs2
-  when(io.wb.r1Addr =/= io.wb.r2Addr) {
-    specCore.io.now.reg(io.wb.r2Addr) := io.wb.r2Data
+  when(io.writeback.rs1Addr =/= io.writeback.rs2Addr) {
+    specCore.io.now.reg(io.writeback.rs2Addr) := io.writeback.rs2Data
   }
 
   specCore.io.valid := checkInst
   specCore.io.inst  := io.instCommit.inst
 
-  val specCoreWBValid = specCore.io.specWb.rd_en
-  val specCoreWBDest  = specCore.io.specWb.rd_addr
-  val specCoreWBData  = specCore.io.specWb.rd_data
-  val specCoreNpcs    = specCore.io.next.pc
-  val specCoreCsrAddr = specCore.io.specWb.csr_addr
-  val specCoreCsrWr   = specCore.io.specWb.csr_wr
+  val specCommit = specCore.io.commit
+  val specMem    = specCore.io.mem
+  val specTlb    = specCore.io.tlb
+  val specNPC    = specCore.io.next.pc
 
   // check memory behavior
   specCore.io.mem.read.data := DontCare
   if (config.formal.checkMem) {
-    val ignoreMem = io.instCommit.valid && !checkInst
+    val ignoreMem = io.instCommit.valid && (io.instCommit.excp || !checkInst)
     val loadQueue = Module(new Queue(new StoreOrLoadInfo, 1, true, true))
     loadQueue.io.enq.valid         := io.mem.get.read.valid
     loadQueue.io.enq.bits.addr     := io.mem.get.read.addr
     loadQueue.io.enq.bits.data     := io.mem.get.read.data
     loadQueue.io.enq.bits.memWidth := io.mem.get.read.memWidth
 
-    loadQueue.io.deq.ready    := specCore.io.mem.read.valid || ignoreMem
-    specCore.io.mem.read.data := loadQueue.io.deq.bits.data
-    when(regDelay(specCore.io.mem.read.valid)) {
-      assert(regDelay(loadQueue.io.deq.bits.addr) === regDelay(specCore.io.mem.read.addr))
-      assert(regDelay(loadQueue.io.deq.bits.memWidth) === regDelay(specCore.io.mem.read.memWidth))
+    loadQueue.io.deq.ready := specMem.read.valid || ignoreMem
+    specMem.read.data      := loadQueue.io.deq.bits.data
+    when(regDelay(specMem.read.valid)) {
+      assert(!regDelay(io.instCommit.excp))
+      assert(regDelay(loadQueue.io.deq.bits.addr) === regDelay(specMem.read.addr))
+      assert(regDelay(loadQueue.io.deq.bits.memWidth) === regDelay(specMem.read.memWidth))
     }
 
     val storeQueue = Module(new Queue(new StoreOrLoadInfo, 1, true, true))
@@ -262,11 +258,13 @@ class CheckerWithWB(
     storeQueue.io.enq.bits.data     := io.mem.get.write.data
     storeQueue.io.enq.bits.memWidth := io.mem.get.write.memWidth
 
-    storeQueue.io.deq.ready := specCore.io.mem.write.valid || ignoreMem
-    when(regDelay(specCore.io.mem.write.valid)) {
-      assert(regDelay(storeQueue.io.deq.bits.addr) === regDelay(specCore.io.mem.write.addr))
-      assert(regDelay(storeQueue.io.deq.bits.data) === regDelay(specCore.io.mem.write.data))
-      assert(regDelay(storeQueue.io.deq.bits.memWidth) === regDelay(specCore.io.mem.write.memWidth))
+    storeQueue.io.deq.ready := specMem.write.valid || ignoreMem
+    when(regDelay(specMem.write.valid)) {
+      assert(!regDelay(io.instCommit.excp))
+      assert(regDelay(storeQueue.io.deq.bits.addr) === regDelay(specMem.write.addr))
+      assert(regDelay(storeQueue.io.deq.bits.memWidth) === regDelay(specMem.write.memWidth))
+      val storeDataMask = specCore.width2Mask(specMem.write.memWidth)
+      assert(((regDelay(storeQueue.io.deq.bits.data) ^ regDelay(specMem.write.data)) & storeDataMask) === 0.U)
     }
 
     if (config.functions.tlb) {
@@ -282,61 +280,47 @@ class CheckerWithWB(
         tlbLoadQueues(i).io.enq.bits.data  := io.dtlbmem.get.read.data
         tlbLoadQueues(i).io.enq.bits.level := io.dtlbmem.get.read.level
 
-        tlbLoadQueues(i).io.deq.ready           := specCore.io.tlb.get.Anotherread(i).valid || ignoreMem
-        specCore.io.tlb.get.Anotherread(i).data := tlbLoadQueues(i).io.deq.bits.data
+        tlbLoadQueues(i).io.deq.ready   := specTlb.get.Anotherread(i).valid || ignoreMem
+        specTlb.get.Anotherread(i).data := tlbLoadQueues(i).io.deq.bits.data
 
-        when(regDelay(specCore.io.tlb.get.Anotherread(i).valid)) {
-          assert(regDelay(tlbLoadQueues(i).io.deq.bits.addr) === regDelay(specCore.io.tlb.get.Anotherread(i).addr))
+        when(regDelay(specTlb.get.Anotherread(i).valid)) {
+          assert(regDelay(tlbLoadQueues(i).io.deq.bits.addr) === regDelay(specTlb.get.Anotherread(i).addr))
         }
       }
     }
   }
 
   when(regDelay(checkInst)) {
-    if (config.formal.checkNPC) assert(regDelay(io.instCommit.npc) === regDelay(specCoreNpcs(31, 0)))
+    if (config.formal.checkNPC) assert(regDelay(io.instCommit.npc) === regDelay(specNPC))
 
-    when(regDelay(specCoreWBValid) && regDelay(io.wb.valid)) {
-      // if reference and dut all raise the valid, compare the dest and the data
-      assert(regDelay(io.wb.dest) === regDelay(specCoreWBDest))
-      assert(regDelay(io.wb.data) === regDelay(specCoreWBData))
-      assert(regDelay(io.wb.data) === regDelay(specCore.io.next.reg(io.wb.dest)))
-    }.elsewhen(regDelay(io.wb.valid)) {
-      // DUT may try to write back to x0, but it should not take effect
-      // if DUT dose write in x0, it will be check out at next instruction
-      when(regDelay(io.wb.dest) =/= 0.U) {
-        assert(regDelay(io.wb.data) === regDelay(specCore.io.next.reg(io.wb.dest)))
-      }
-    }.elsewhen(regDelay(specCoreWBValid)) {
-      // if reference raise but dut does't and the dest is not x0, we think that it's invalid
-      assert(regDelay(specCoreWBDest) === 0.U)
-    }
+    assert(regDelay(io.instCommit.excp) === regDelay(specCommit.exception))
 
-    // try to verify two operands of instruction
-    when(regDelay(specCore.io.specWb.checkrs1)) {
-      when(regDelay(io.wb.r1Addr) === 0.U) {
-        assert(regDelay(io.wb.r1Data) === 0.U)
-      }
-      assert(regDelay(io.wb.r1Addr) === regDelay(specCore.io.specWb.rs1_addr))
-    }
-    when(regDelay(specCore.io.specWb.checkrs2)) {
-      when(regDelay(io.wb.r2Addr) === 0.U) {
-        assert(regDelay(io.wb.r2Data) === 0.U)
-      }
-      assert(regDelay(io.wb.r2Addr) === regDelay(specCore.io.specWb.rs2_addr))
-    }
+    when(!regDelay(specCommit.exception)) {
+      assert(regDelay(io.writeback.rdAddr) === regDelay(specCommit.rdAddr))
+      assert(regDelay(io.writeback.rdData) === regDelay(specCommit.rdData))
+      assert(regDelay(io.writeback.rdData) === regDelay(specCore.io.next.reg(io.writeback.rdAddr)))
 
-    // try to verify csr write and read
-    if (config.formal.checkCSRs) {
-      when(regDelay(specCoreCsrWr) || regDelay(io.wb.csrWr)) {
-        assert(regDelay(specCoreCsrWr) === regDelay(io.wb.csrWr))
-        assert(regDelay(specCoreCsrAddr) === regDelay(io.wb.csrAddr))
-        val specCoreCsrNdata = WireInit(0.U(64.W))
-        specCore.io.next.privilege.csr.table.foreach { case (CSRInfoSignal(info, nextCSR)) =>
-          when(io.wb.csrAddr === info.addr) {
-            specCoreCsrNdata := nextCSR
-          }
+      // try to verify two operands of instruction
+      when(regDelay(specCommit.readRs1)) {
+        when(regDelay(io.writeback.rs1Addr) === 0.U) {
+          assert(regDelay(io.writeback.rs1Data) === 0.U)
         }
-        assert(regDelay(specCoreCsrNdata) === regDelay(io.wb.csrNdata))
+        assert(regDelay(io.writeback.rs1Addr) === regDelay(specCommit.rs1Addr))
+      }
+      when(regDelay(specCommit.readRs2)) {
+        when(regDelay(io.writeback.rs2Addr) === 0.U) {
+          assert(regDelay(io.writeback.rs2Data) === 0.U)
+        }
+        assert(regDelay(io.writeback.rs2Addr) === regDelay(specCommit.rs2Addr))
+      }
+
+      // try to verify csr write and read
+      if (config.formal.checkCSRs) {
+        when(regDelay(specCommit.csrWr) || regDelay(io.writeback.csrWr)) {
+          assert(regDelay(specCommit.csrWr) === regDelay(io.writeback.csrWr))
+          assert(regDelay(specCommit.csrAddr) === regDelay(io.writeback.csrAddr))
+          assert(regDelay(specCommit.csrNdata) === regDelay(io.writeback.csrNdata))
+        }
       }
     }
   }

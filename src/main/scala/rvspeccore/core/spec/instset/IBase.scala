@@ -2,10 +2,10 @@ package rvspeccore.core.spec.instset
 
 import chisel3._
 import chisel3.util._
-import rvspeccore.core.BaseCore
+import rvspeccore.core._
 import rvspeccore.core.spec._
+import rvspeccore.core.tool._
 import rvspeccore.core.tool.BitTool._
-import rvspeccore.core.tool.{CheckTool, LoadStore}
 import rvspeccore.core.spec.instset.csr._
 
 /** Base Integer Instructions
@@ -100,36 +100,15 @@ object SizeOp {
   def d = "b11".U
 }
 trait IBase extends BaseCore with CommonDecode with IBaseInsts with ExceptionSupport with LoadStore with CheckTool {
-  // val setPc = WireInit(false.B)
-
-  def addrAligned(size: UInt, addr: UInt): Bool = {
-    MuxLookup(size, false.B)(
-      Seq(
-        "b00".U -> true.B,               // b
-        "b01".U -> (addr(0) === 0.U),    // h
-        "b10".U -> (addr(1, 0) === 0.U), // w
-        "b11".U -> (addr(2, 0) === 0.U)  // d
-      )
-    )
-  }
-
-  def getfetchSize(): UInt = {
-    MuxLookup(now.privilege.csr.misa(CSR.getMisaExtInt('C')), SizeOp.w)(
-      Seq(
-        "b0".U -> SizeOp.w,
-        "b1".U -> SizeOp.h
-      )
-    )
-  }
+  def fetchSize: UInt = Mux(now.privilege.csr.misa(CSR.getMisaExtInt('C')), 16.U, 32.U)
 
   def opArithLogic(rd: UInt, op1: UInt, op2: UInt, func: (UInt, UInt) => UInt): Unit = {
     updateDestReg(rd, func(op1, op2))
   }
 
   def opJumpLink(rd: UInt, target: UInt): Unit = {
-    when(addrAligned(getfetchSize(), target)) {
-      global_data.setpc := true.B;
-      next.pc           := target;
+    when(addrAligned(target, fetchSize)) {
+      setPC(target)
       updateDestReg(rd, now.pc + 4.U)
     }.otherwise {
       next.privilege.csr.mtval := target;
@@ -139,36 +118,26 @@ trait IBase extends BaseCore with CommonDecode with IBaseInsts with ExceptionSup
 
   def opBranch(rs1: UInt, rs2: UInt, compare: (UInt, UInt) => Bool): Unit = {
     when(compare(getSrc1Reg(rs1), getSrc2Reg(rs2))) {
-      val npc = now.pc + imm
-      when(addrAligned(getfetchSize(), npc)) {
-        global_data.setpc := true.B
-        next.pc           := npc
+      val target = now.pc + imm
+      when(addrAligned(target, fetchSize)) {
+        setPC(target)
       }.otherwise {
-        next.privilege.csr.mtval := npc
+        next.privilege.csr.mtval := target
         raiseException(MExceptionCode.instructionAddressMisaligned)
       }
     }
   }
 
   def opLoad(rd: UInt, rs1: UInt, imm: UInt, sizeOp: UInt, isUnsigned: Boolean): Unit = {
-    val width   = 8 * math.pow(2, sizeOp.litValue.toDouble).toInt
-    val extFunc = if (isUnsigned) zeroExt _ else signExt _
-    when(addrAligned(sizeOp, getSrc1Reg(rs1) + imm)) {
-      updateDestReg(rd, extFunc(memRead(getSrc1Reg(rs1) + imm, width.U)(width - 1, 0), XLEN))
-    }.otherwise {
-      mem.read.addr := getSrc1Reg(rs1) + imm
-      raiseException(MExceptionCode.loadAddressMisaligned)
-    }
+    val width        = 8 * math.pow(2, sizeOp.litValue.toDouble).toInt
+    val extFunc      = if (isUnsigned) zeroExt _ else signExt _
+    val (data, excp) = memRead((getSrc1Reg(rs1) + imm), width.U)
+    when(!excp) { updateDestReg(rd, extFunc(data(width - 1, 0), XLEN)) }
   }
 
   def opStore(rs1: UInt, rs2: UInt, imm: UInt, sizeOp: UInt): Unit = {
     val width = 8 * math.pow(2, sizeOp.litValue.toDouble).toInt
-    when(addrAligned(sizeOp, getSrc1Reg(rs1) + imm)) {
-      memWrite(getSrc1Reg(rs1) + imm, width.U, getSrc2Reg(rs2)(width - 1, 0))
-    }.otherwise {
-      mem.write.addr := getSrc1Reg(rs1) + imm
-      raiseException(MExceptionCode.storeOrAMOAddressMisaligned)
-    }
+    memWrite(getSrc1Reg(rs1) + imm, width.U, getSrc2Reg(rs2))
   }
 
   def doIBase(singleInst: Inst): Unit = {
@@ -243,7 +212,7 @@ trait IBase extends BaseCore with CommonDecode with IBaseInsts with ExceptionSup
       case EBREAK => decodeI; raiseException(MExceptionCode.breakpoint)
       case ECALL =>
         decodeI;
-        switch(now.privilege.internal.privilegeMode) {
+        switch(now.privilege.mode) {
           is(0x3.U) { raiseException(MExceptionCode.environmentCallFromMmode) }
           is(0x1.U) { raiseException(MExceptionCode.environmentCallFromSmode) }
           is(0x0.U) { raiseException(MExceptionCode.environmentCallFromUmode) }

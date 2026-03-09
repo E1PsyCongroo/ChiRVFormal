@@ -3,10 +3,9 @@ package rvspeccore.checker
 import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
-import rvspeccore.core.{RVConfig, State, PrivilegedState}
-import rvspeccore.core.spec.instset.csr.CSR
-import rvspeccore.core.spec.instset.csr.EventSig
-import rvspeccore.core.tool.TLBSig
+import rvspeccore.core._
+import rvspeccore.core.tool._
+import rvspeccore.core.spec.instset.csr._
 
 object ConnectHelper {
   object UniqueId {
@@ -41,6 +40,9 @@ object ConnectHelper {
     val read  = new MemOneSig
     val write = new MemOneSig
   }
+  object MemSig {
+    def apply()(implicit XLEN: Int) = new MemSig
+  }
 
   def makeMemSource()(implicit XLEN: Int): MemSig = {
     val mem = Wire(new MemSig)
@@ -65,25 +67,18 @@ object ConnectHelper {
     csr
   }
 
-  def makeEventSource()(implicit XLEN: Int): EventSig = {
-    val event = Wire(new EventSig())
-    event := DontCare
-    BoringUtils.addSource(event, uniqueIdEvent)
-    event
-  }
-
   def makeTLBSource(isDTLB: Boolean)(implicit XLEN: Int): TLBSig = {
-    val tlbmem = WireInit(0.U.asTypeOf(new TLBSig))
+    val tlbmem = WireInit(0.U.asTypeOf(TLBSig()))
     BoringUtils.addSource(tlbmem, if (isDTLB) uniqueIdDTLB else uniqueIdITLB)
     tlbmem
   }
 
   def setChecker(
-      checker: CheckerWithResult,
+      checker: CheckerWithState,
       memDelay: Int
   )(implicit XLEN: Int, config: RVConfig) = {
     // pc
-    checker.io.result.pc := checker.io.instCommit.pc
+    checker.io.state.pc := checker.io.instCommit.pc
 
     // reg
     if (config.formal.arbitraryRegFile) ArbitraryRegFile.init
@@ -91,29 +86,23 @@ object ConnectHelper {
     val regVec = Wire(Vec(32, UInt(XLEN.W)))
     regVec := DontCare
     BoringUtils.addSink(regVec, uniqueIdReg)
-    checker.io.result.reg := regVec
+    checker.io.state.reg := regVec
 
     // csr
     val csr = Wire(CSR())
     csr := DontCare
     BoringUtils.addSink(csr, uniqueIdCSR)
-    checker.io.result.privilege.csr      := csr
-    checker.io.result.privilege.internal := DontCare
-
-    // event
-    val event = Wire(new EventSig())
-    event := DontCare
-    BoringUtils.addSink(event, uniqueIdEvent)
-    checker.io.event := event
+    checker.io.state.privilege.csr  := csr
+    checker.io.state.privilege.mode := DontCare
 
     if (config.formal.checkMem) {
-      val mem = Wire(new MemSig)
+      val mem = Wire(MemSig())
       mem := DontCare
       BoringUtils.addSink(mem, uniqueIdMem)
       checker.io.mem.get := regNextDelay(mem, memDelay)
       if (config.functions.tlb) {
-        val dtlbmem = Wire(new TLBSig)
-        val itlbmem = Wire(new TLBSig)
+        val dtlbmem = Wire(TLBSig())
+        val itlbmem = Wire(TLBSig())
         dtlbmem := DontCare
         itlbmem := DontCare
         BoringUtils.addSink(dtlbmem, uniqueIdDTLB)
@@ -123,7 +112,7 @@ object ConnectHelper {
       }
     }
   }
-  def setChecker(checker: CheckerWithResult)(implicit XLEN: Int, config: RVConfig): Unit = setChecker(checker, 0)
+  def setChecker(checker: CheckerWithState)(implicit XLEN: Int, config: RVConfig): Unit = setChecker(checker, 0)
 
   def setChecker(
       checker: CheckerWithWB,
@@ -141,13 +130,13 @@ object ConnectHelper {
 
     // mem
     if (config.formal.checkMem) {
-      val mem = Wire(new MemSig)
+      val mem = Wire(MemSig())
       mem := DontCare
       BoringUtils.addSink(mem, uniqueIdMem)
       checker.io.mem.get := regNextDelay(mem, memDelay)
       if (config.functions.tlb) {
-        val dtlbmem = Wire(new TLBSig)
-        val itlbmem = Wire(new TLBSig)
+        val dtlbmem = Wire(TLBSig())
+        val itlbmem = Wire(TLBSig())
         dtlbmem := DontCare
         itlbmem := DontCare
         BoringUtils.addSink(dtlbmem, uniqueIdDTLB)

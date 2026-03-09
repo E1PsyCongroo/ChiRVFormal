@@ -8,6 +8,14 @@ import rvspeccore.core.spec._
 import rvspeccore.core.tool.BitTool._
 import rvspeccore.core.RVConfig
 
+object PrivilegeLevel extends ChiselEnum {
+  val User       = Value(0.U(2.W))
+  val Supervisor = Value(1.U(2.W))
+  val Machine    = Value(3.U(2.W))
+
+  def initLevel = Machine
+}
+
 case class CSRInfo(
     addr: UInt,
     width: Option[Int],
@@ -196,15 +204,8 @@ object CSRInfos extends CSRInfos
 
 case class CSRInfoSignal(info: CSRInfo, signal: UInt)
 
-class EventSig()(implicit XLEN: Int) extends Bundle {
-  val valid         = Bool()
-  val intrNO        = UInt(XLEN.W)
-  val cause         = UInt(XLEN.W)
-  val exceptionPC   = UInt(XLEN.W)
-  val exceptionInst = UInt(XLEN.W)
-}
-
-class CSR()(implicit XLEN: Int, config: RVConfig) extends Bundle with IgnoreSeqInBundle {
+class CSR()(implicit config: RVConfig) extends Bundle with IgnoreSeqInBundle {
+  implicit val XLEN: Int = config.XLEN
   // make default value for registers
   val misa       = CSRInfos.misa.makeUInt
   val mvendorid  = CSRInfos.mvendorid.makeUInt
@@ -324,10 +325,18 @@ class CSR()(implicit XLEN: Int, config: RVConfig) extends Bundle with IgnoreSeqI
   )
 }
 object CSR {
-  def apply()(implicit XLEN: Int, config: RVConfig): CSR = new CSR()
-  def getMisaExt(ext: Char): UInt                        = { 1.U << (ext.toInt - 'A'.toInt) }
-  def getMisaExtInt(ext: Char): Int                      = { (ext.toInt - 'A'.toInt) }
-  def wireInit()(implicit XLEN: Int, config: RVConfig): CSR = {
+  def apply()(implicit config: RVConfig): CSR = new CSR
+  def getMisaMxl(xlen: Int): UInt = {
+    xlen match {
+      case 32  => 1.U << (xlen - 2)
+      case 64  => 2.U << (xlen - 2)
+      case 128 => 3.U << (xlen - 2)
+    }
+  }
+  def getMisaExt(ext: Char): UInt   = { 1.U << (ext.toInt - 'A'.toInt) }
+  def getMisaExtInt(ext: Char): Int = { (ext.toInt - 'A'.toInt) }
+  def wireInit()(implicit config: RVConfig): CSR = {
+    implicit val XLEN: Int = config.XLEN
 
     // TODO: finish the sideEffect func
     // Initial the value of CSR Regs
@@ -335,19 +344,11 @@ object CSR {
     // TODO: End
     // Set initial value to CSRs
     // CSR Class is just a Bundle, need to transfer to Wire
-    val csr = Wire(new CSR())
+    val csr = Wire(CSR())
 
     // Misa Initial Begin -----------------
-    def getMisaMxl(): UInt = {
-      XLEN match {
-        case 32  => 1.U << (XLEN - 2)
-        case 64  => 2.U << (XLEN - 2)
-        case 128 => 3.U << (XLEN - 2)
-      }
-    }
-    val misaInitVal =
-      getMisaMxl() | config.csr.MisaExtList.foldLeft(0.U)((sum, i) => sum | getMisaExt(i)) // "h8000000000141105".U
-    // val valid = csr.io.in.valid
+    // default: "h8000000000141105".U
+    val misaInitVal = getMisaMxl(XLEN) | config.csr.MisaExtList.foldLeft(0.U)((sum, i) => sum | getMisaExt(i))
     csr.misa := misaInitVal
     // Misa Initial End -----------------
 
@@ -364,7 +365,7 @@ object CSR {
     // printf("mpp---------------:%b\n",mstatus_change.mpp)
     csr.mstatush   := 0.U // 310
     csr.mscratch   := 0.U
-    csr.mtvec      := config.initValue.getOrElse("mtvec", "h0").U
+    csr.mtvec      := config.initValue.getOrElse("mtvec", "h0000_0000").U
     csr.mcounteren := 0.U
     csr.medeleg    := 0.U // 302
     csr.mideleg    := 0.U // 303

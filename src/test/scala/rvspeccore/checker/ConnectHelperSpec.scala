@@ -11,20 +11,16 @@ class ConnectHelperSpec extends AnyFlatSpec with ChiselScalatestTester {
   behavior of "ConnectHelper"
 
   class TestCore(implicit val config: RVConfig) extends RiscvCore {
-    val checker = Module(new CheckerWithResult(false, None))
+    val checker = Module(new CheckerWithState(false, None))
     checker.io.instCommit.valid := RegNext(io.valid, false.B)
+    checker.io.instCommit.excp  := RegNext(trans.io.commit.exception, false.B)
     checker.io.instCommit.inst  := RegNext(io.inst)
     checker.io.instCommit.pc    := RegNext(state.pc)
     checker.io.instCommit.npc   := DontCare
 
-    checker.io.result := DontCare
-
     ConnectHelper.setRegSource(state.reg)
     val csr = ConnectHelper.makeCSRSource()
     csr := state.privilege.csr
-
-    val event = ConnectHelper.makeEventSource()
-    event := io.event
 
     if (config.formal.checkMem) {
       val memSource = ConnectHelper.makeMemSource()

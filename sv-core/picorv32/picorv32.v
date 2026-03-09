@@ -351,6 +351,7 @@ module picorv32 #(
 	reg [1:0] mem_state;
 	reg [1:0] mem_wordsize;
 	reg [31:0] mem_rdata_word;
+	reg [31:0] mem_rmask;
 	reg [31:0] mem_rdata_q;
 	reg mem_do_prefetch;
 	reg mem_do_rinst;
@@ -584,11 +585,13 @@ module picorv32 #(
 						mem_valid <= !mem_la_use_prefetched_high_word;
 						mem_instr <= mem_do_prefetch || mem_do_rinst;
 						mem_wstrb <= 0;
+						mem_rmask <= mem_la_wstrb;
 						mem_state <= 1;
 					end
 					if (mem_do_wdata) begin
 						mem_valid <= 1;
 						mem_instr <= 0;
+						mem_rmask <= 0;
 						mem_state <= 2;
 					end
 				end
@@ -1470,7 +1473,11 @@ module picorv32 #(
 			pcpi_timeout <= 0;
 			irq_active <= 0;
 			irq_delay <= 0;
+`ifndef PICORV32_TESTTRAP
 			irq_mask <= ~0;
+`else
+			irq_mask <= ~{ 29'b0, CATCH_MISALIGN, CATCH_ILLINSN, ENABLE_IRQ_TIMER };
+`endif
 			next_irq_pending = 0;
 			irq_state <= 0;
 			eoi <= 0;
@@ -1988,7 +1995,7 @@ module picorv32 #(
 		rvfi_pc_rdata <= dbg_insn_addr;
 		rvfi_rs1_rdata <= dbg_rs1val_valid ? dbg_rs1val : 0;
 		rvfi_rs2_rdata <= dbg_rs2val_valid ? dbg_rs2val : 0;
-		rvfi_trap <= trap;
+		rvfi_trap <= dbg_irq_call;
 		rvfi_halt <= trap;
 		rvfi_intr <= dbg_irq_enter;
 		rvfi_mode <= 3;
@@ -2053,7 +2060,7 @@ module picorv32 #(
 			end else
 			if (dbg_mem_valid && dbg_mem_ready) begin
 				rvfi_mem_addr <= dbg_mem_addr;
-				rvfi_mem_rmask <= dbg_mem_wstrb ? 0 : ~0;
+				rvfi_mem_rmask <= mem_rmask;
 				rvfi_mem_wmask <= dbg_mem_wstrb;
 				rvfi_mem_rdata <= dbg_mem_rdata;
 				rvfi_mem_wdata <= dbg_mem_wdata;
@@ -2063,9 +2070,9 @@ module picorv32 #(
 
 	always @* begin
 `ifdef PICORV32_TESTBUG_005
-		rvfi_pc_wdata = (dbg_irq_call ? dbg_irq_ret : dbg_insn_addr) ^ 4;
+		rvfi_pc_wdata = dbg_insn_addr ^ 4;
 `else
-		rvfi_pc_wdata = dbg_irq_call ? dbg_irq_ret : dbg_insn_addr;
+		rvfi_pc_wdata = dbg_insn_addr;
 `endif
 
 		rvfi_csr_mcycle_rmask = 0;

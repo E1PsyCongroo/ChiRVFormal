@@ -12,8 +12,6 @@ class WriteBackChecker(enableReg: Boolean = true, singleInstMode: Option[Inst] =
     extends Module {
   implicit val XLEN: Int = config.XLEN
 
-  // val clock     = IO(Input(Clock()))
-  // val reset     = IO(Input(Reset()))
   val commit    = IO(Input(InstCommit()))
   val writeback = IO(Input(WriteBack()))
   val mem       = if (config.formal.checkMem) Some(IO(Input(MemIO()))) else None
@@ -23,14 +21,14 @@ class WriteBackChecker(enableReg: Boolean = true, singleInstMode: Option[Inst] =
   val check = Module(new CheckerWithWB(enableReg, singleInstMode))
 
   check.io.instCommit := commit
-  check.io.wb         := writeback
+  check.io.writeback  := writeback
   if (config.formal.checkMem) { check.io.mem.get := mem.get }
   if (config.formal.checkCSRs) {
-    check.io.privilege.internal.privilegeMode := mode.get
-    check.io.privilege.csr                    := csr.get
+    check.io.privilege.mode := mode.get
+    check.io.privilege.csr  := csr.get
   } else {
-    check.io.privilege.internal.privilegeMode := 3.U
-    check.io.privilege.csr                    := CSR.wireInit()
+    check.io.privilege.mode := PrivilegeLevel.Machine.asUInt
+    check.io.privilege.csr  := CSR.wireInit()
   }
 
 }

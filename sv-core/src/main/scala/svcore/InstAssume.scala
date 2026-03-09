@@ -32,11 +32,10 @@ class InstAssume(implicit config: RVConfig) extends RawModule {
 
   when(valid) {
     // change here to add more instructions to be assumed
-    cond := RVI.regImm(inst) ||
-      RVI.regReg(inst) ||
-      RVI.control(inst) ||
-      RVI.loadStore(inst) ||
-      RVC(inst)
+
+    cond := RVI(inst) ||
+      RVC(inst) ||
+      RVM(inst)
   }
 
   combAssume.cond := cond
