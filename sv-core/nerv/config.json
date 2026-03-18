@@ -1,0 +1,10 @@
+{
+  "xlen": 32,
+  "extensions": ["I", "Zba", "Zbb", "Zbc", "Zbs", "Zbkb", "Zbkc", "Zbkx"],
+  "fakeExtensions": [],
+  "initValue": {"pc": "h8000_0000", "mstatus": "h0000_0000", "mtvec": "h0000_0000"},
+  "functions": ["Privileged"],
+  "formal": ["CheckMem", "CheckNPC", "CheckCSRs"],
+  "regDelay": false,
+  "singleInstMode": null
+}

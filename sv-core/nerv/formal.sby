@@ -1,19 +1,20 @@
 [options]
 mode bmc
 expect pass,fail
-depth 21
-skip 20
+append 0
+depth 11
+skip 10
 
 [engines]
 smtbmc boolector
 
 [script]
-read -sv defines.sv picorv32.v wrapper.sv CombAssume.sv InstAssume.sv WriteBackChecker.sv testbench.sv
+read -sv defines.sv nerv.sv wrapper.sv CombAssume.sv InstAssume.sv WriteBackChecker.sv testbench.sv
 prep -flatten -nordff -top testbench
 chformal -early
 
 [files]
-picorv32.v
+nerv.sv
 wrapper.sv
 CombAssume.sv
 InstAssume.sv
@@ -23,8 +24,7 @@ testbench.sv
 [file defines.sv]
 `define YOSYS // Hotfix for older Tabby CAD Releases
 `define RISCV_FORMAL
-`define RISCV_FORMAL_CHECK_CYCLE 20
-`define DEBUGNETS
-`define DEBUGREGS
-`define PICORV32_TESTTRAP
-`define PICORV32_TESTBUG_NONE
+`define RISCV_FORMAL_CHECK_CYCLE 10
+`define NERV_CSR
+`define NERV_PMP
+`define NERV_RVFI

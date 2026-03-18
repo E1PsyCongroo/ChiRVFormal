@@ -148,7 +148,7 @@ class RiscvTrans(singleInstMode: Option[Inst] = None)(implicit config: RVConfig)
   when(io.valid) {
     // CSR
     // TODO: merge into a function?
-    next.privilege.csr.cycle := now.privilege.csr.cycle + 1.U
+    next.privilege.csr.mcycle := now.privilege.csr.mcycle + 1.U
     exceptionSupportInit()
 
     if (!config.functions.tlb) {
