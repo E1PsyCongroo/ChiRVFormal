@@ -58,7 +58,7 @@ object Main extends App {
           args.model match {
             case "writeback" =>
               chiselStage.emitSystemVerilog(
-                new WriteBackChecker(config.regDelay, None)(config.toRVConfig),
+                new WriteBackChecker(config.regDelay, config.getSingleInstMode)(config.toRVConfig),
                 Array(
                   "--target-dir",
                   args.targetDir,
@@ -78,7 +78,7 @@ object Main extends App {
             case _ => println("unsupported model")
           }
         case util.Failure(err) =>
-          println(s"${args.configFile}: ${err.getMessage}")
+          throw new Exception(s"${args.configFile}: ${err.getMessage}")
       }
     case _ =>
       sys.exit(1)

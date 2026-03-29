@@ -32,6 +32,7 @@ abstract class AssumeHelper {
     }
   }
 }
+
 object AssumeHelper {
   def apply(list32A: Seq[spec.Inst], append64A: Seq[spec.Inst]): AssumeHelper = {
     new AssumeHelper {
@@ -50,13 +51,15 @@ object AssumeHelper {
 }
 
 object RV extends AssumeHelper with spec.RVInsts {
-  val partition: Seq[AssumeHelper] = List(RVG, RVC)
+  val partition: Seq[AssumeHelper] = List(RVG, RVC, RVB, RVPrivileged)
 }
+
 object RVG extends AssumeHelper with spec.GSetInsts {
   // : we use the abbreviation G for the IMAFDZicsr_Zifencei combination of
   // : instruction-set extensions
-  val partition = List(RVI, RVM)
+  val partition = List(RVI, RVM, RVZicsr, RVZifencei)
 }
+
 object RVI extends AssumeHelper with spec.instset.IBaseInsts {
   // classification by
   // - riscv-spec-20191213
@@ -78,12 +81,14 @@ object RVI extends AssumeHelper with spec.instset.IBaseInsts {
     List(LWU, LD, SD)
   )
   val other = AssumeHelper(
+    // FIXME: FENCE will occurs exception when verify
     // List(FENCE, ECALL, EBREAK)
-    List(ECALL, EBREAK) // FIXME: FENCE will occurs exception when verify
+    List(ECALL, EBREAK)
   )
 
   val partition = List(regImm, regReg, control, loadStore, other)
 }
+
 object RVM extends AssumeHelper with spec.instset.MExtensionInsts {
   val mulOp = AssumeHelper(
     List(MUL, MULH, MULHSU, MULHU),
@@ -96,6 +101,7 @@ object RVM extends AssumeHelper with spec.instset.MExtensionInsts {
 
   val partition: Seq[AssumeHelper] = List(mulOp, divOp)
 }
+
 object RVC extends AssumeHelper with spec.instset.CExtensionInsts {
   // RV128C, RVFC not included
 
@@ -117,6 +123,7 @@ object RVC extends AssumeHelper with spec.instset.CExtensionInsts {
 
   val partition: Seq[AssumeHelper] = List(loadStore, control, regImm, regReg)
 }
+
 object RVZicsr extends AssumeHelper with spec.instset.ZicsrExtensionInsts {
   val reg = AssumeHelper(
     List(CSRRW, CSRRS, CSRRC)
@@ -127,6 +134,7 @@ object RVZicsr extends AssumeHelper with spec.instset.ZicsrExtensionInsts {
 
   val partition: Seq[AssumeHelper] = List(reg, imm)
 }
+
 object RVZifencei extends AssumeHelper with spec.instset.ZifenceiExtensionInsts {
   val fence_i = AssumeHelper(
     List(FENCE_I)
@@ -134,6 +142,7 @@ object RVZifencei extends AssumeHelper with spec.instset.ZifenceiExtensionInsts 
 
   val partition: Seq[AssumeHelper] = List(fence_i)
 }
+
 object RVPrivileged extends AssumeHelper with spec.instset.PrivilegedInsts {
   val trap_return = AssumeHelper(
     List(SRET, MRET)
@@ -143,6 +152,7 @@ object RVPrivileged extends AssumeHelper with spec.instset.PrivilegedInsts {
   // )
   val partition: Seq[AssumeHelper] = List(trap_return)
 }
+
 object RVB extends AssumeHelper with spec.instset.BExtensionInsts {
   val zba = AssumeHelper(
     List(SH1ADD, SH2ADD, SH3ADD),
