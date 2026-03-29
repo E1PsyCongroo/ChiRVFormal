@@ -3,11 +3,13 @@ package rvspeccore.checker
 import chisel3._
 import chisel3.util._
 import chisel3.util.experimental.BoringUtils
+
 import rvspeccore.core._
 import rvspeccore.core.tool._
 import rvspeccore.core.spec.instset.csr._
 
 object ConnectHelper {
+
   object UniqueId {
     val uniqueIdReg: String   = "ConnectChecker_UniqueIdReg"
     val uniqueIdMem: String   = "ConnectChecker_UniqueIdMem"

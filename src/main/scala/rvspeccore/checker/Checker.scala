@@ -2,6 +2,7 @@ package rvspeccore.checker
 
 import chisel3._
 import chisel3.util._
+
 import rvspeccore.core._
 import rvspeccore.core.spec._
 import rvspeccore.core.spec.instset.csr._
