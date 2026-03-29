@@ -62,6 +62,10 @@ module wrapper (
   (* keep *)wire [ 3:0] rvfi_mem_wmask;
   (* keep *)wire [31:0] rvfi_mem_rdata;
   (* keep *)wire [31:0] rvfi_mem_wdata;
+	(* keep *)wire [31:0] rvfi_mem_read_addr;
+	(* keep *)wire [ 5:0] rvfi_mem_read_width;
+	(* keep *)wire [31:0] rvfi_mem_write_addr;
+	(* keep *)wire [ 5:0] rvfi_mem_write_width;
   (* keep *)wire [63:0] rvfi_csr_mcycle_rmask;
   (* keep *)wire [63:0] rvfi_csr_mcycle_wmask;
   (* keep *)wire [63:0] rvfi_csr_mcycle_rdata;
@@ -126,6 +130,12 @@ module wrapper (
       .rvfi_mem_rdata(rvfi_mem_rdata),
       .rvfi_mem_wdata(rvfi_mem_wdata),
 
+	    .rvfi_mem_read_addr(rvfi_mem_read_addr),
+	    .rvfi_mem_read_width(rvfi_mem_read_width),
+	    .rvfi_mem_write_addr(rvfi_mem_write_addr),
+	    .rvfi_mem_write_width(rvfi_mem_write_width),
+
+
       .rvfi_csr_mcycle_rmask  (rvfi_csr_mcycle_rmask),
       .rvfi_csr_mcycle_wmask  (rvfi_csr_mcycle_wmask),
       .rvfi_csr_mcycle_rdata  (rvfi_csr_mcycle_rdata),
@@ -152,39 +162,15 @@ module wrapper (
   assign writeback_csrAddr = 'b0;
   assign writeback_csrNdata = 'b0;
 
-  function [1:0] mask2offset;
-    input [3:0] mask;
-    begin
-      casex (mask)
-        4'b???1: mask2offset = 0;
-        4'b??10: mask2offset = 1;
-        4'b?100: mask2offset = 2;
-        4'b1000: mask2offset = 3;
-        default: mask2offset = 0;
-      endcase
-    end
-  endfunction
-
-  function [5:0] mask2width;
-    input [3:0] mask;
-    begin
-      case (mask)
-        4'b0001, 4'b0010, 4'b0100, 4'b1000: mask2width = 6'd8;
-        4'b0011, 4'b1100: mask2width = 6'd16;
-        default: mask2width = 6'd32;
-      endcase
-    end
-  endfunction
-
   assign mem_read_valid = (rvfi_valid && |rvfi_mem_rmask);
-  assign mem_read_memWidth = mask2width(rvfi_mem_rmask);
-  assign mem_read_addr = rvfi_mem_addr + mask2offset(rvfi_mem_rmask);
+  assign mem_read_memWidth = rvfi_mem_read_width;
+  assign mem_read_addr = rvfi_mem_read_addr;
   assign mem_read_data = rvfi_mem_rdata;
 
   assign mem_write_valid = (rvfi_valid && |rvfi_mem_wmask);
-  assign mem_write_memWidth = mask2width(rvfi_mem_wmask);
-  assign mem_write_addr = rvfi_mem_addr + mask2offset(rvfi_mem_wmask);
-  assign mem_write_data = rvfi_mem_wdata >> (mask2offset(rvfi_mem_wmask) * 8);
+  assign mem_write_memWidth = rvfi_mem_write_width;
+  assign mem_write_addr = rvfi_mem_write_addr;
+  assign mem_write_data = rvfi_mem_wdata >> (rvfi_mem_write_addr[1:0] * 8);
 
   always @* begin
     if (!reset && rvfi_valid) begin

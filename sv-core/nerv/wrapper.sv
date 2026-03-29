@@ -16,7 +16,7 @@ module wrapper (
     output [31:0] writeback_rdData,
     output        writeback_csrWr,
     output [11:0] writeback_csrAddr,
-    output [63:0] writeback_csrNdata,
+    output [31:0] writeback_csrNdata,
 
     output        mem_read_valid,
     output [31:0] mem_read_addr,
@@ -295,6 +295,15 @@ module wrapper (
   (* keep *)wire [31:0] rvfi_mem_rdata;
   (* keep *)wire [31:0] rvfi_mem_wdata;
 
+	(* keep *)wire [31:0] rvfi_mem_read_addr;
+	(* keep *)wire [ 5:0] rvfi_mem_read_width;
+	(* keep *)wire [31:0] rvfi_mem_write_addr;
+	(* keep *)wire [ 5:0] rvfi_mem_write_width;
+
+  (* keep *)wire        rvfi_csr_wr;
+  (* keep *)wire [11:0] rvfi_csr_addr;
+  (* keep *)wire [63:0] rvfi_csr_ndata;
+
   (* keep *)wire [31:0] rvfi_csr_mvendorid_rdata;
   (* keep *)wire [31:0] rvfi_csr_marchid_rdata;
   (* keep *)wire [31:0] rvfi_csr_mimpid_rdata;
@@ -537,6 +546,15 @@ module wrapper (
       .rvfi_mem_rdata(rvfi_mem_rdata),
       .rvfi_mem_wdata(rvfi_mem_wdata),
 
+	    .rvfi_mem_read_addr(rvfi_mem_read_addr),
+	    .rvfi_mem_read_width(rvfi_mem_read_width),
+	    .rvfi_mem_write_addr(rvfi_mem_write_addr),
+	    .rvfi_mem_write_width(rvfi_mem_write_width),
+
+      .rvfi_csr_wr(rvfi_csr_wr),
+      .rvfi_csr_addr(rvfi_csr_addr),
+      .rvfi_csr_ndata(rvfi_csr_ndata),
+
       .rvfi_csr_mvendorid_rdata(rvfi_csr_mvendorid_rdata),
       .rvfi_csr_marchid_rdata(rvfi_csr_marchid_rdata),
       .rvfi_csr_mimpid_rdata(rvfi_csr_mimpid_rdata),
@@ -742,43 +760,19 @@ module wrapper (
   assign writeback_rs2Data = rvfi_rs2_rdata;
   assign writeback_rdAddr = rvfi_rd_addr;
   assign writeback_rdData = rvfi_rd_wdata;
-  assign writeback_csrWr = 'b0;
-  assign writeback_csrAddr = 'b0;
-  assign writeback_csrNdata = 'b0;
-
-  function [1:0] mask2offset;
-    input [3:0] mask;
-    begin
-      casex (mask)
-        4'b???1: mask2offset = 0;
-        4'b??10: mask2offset = 1;
-        4'b?100: mask2offset = 2;
-        4'b1000: mask2offset = 3;
-        default: mask2offset = 0;
-      endcase
-    end
-  endfunction
-
-  function [5:0] mask2width;
-    input [3:0] mask;
-    begin
-      case (mask)
-        4'b0001, 4'b0010, 4'b0100, 4'b1000: mask2width = 6'd8;
-        4'b0011, 4'b1100: mask2width = 6'd16;
-        default: mask2width = 6'd32;
-      endcase
-    end
-  endfunction
+  assign writeback_csrWr = rvfi_csr_wr;
+  assign writeback_csrAddr = rvfi_csr_addr;
+  assign writeback_csrNdata = rvfi_csr_ndata;
 
   assign mem_read_valid = (rvfi_valid && |rvfi_mem_rmask);
-  assign mem_read_memWidth = mask2width(rvfi_mem_rmask);
-  assign mem_read_addr = rvfi_mem_addr + mask2offset(rvfi_mem_rmask);
+  assign mem_read_memWidth = rvfi_mem_read_width;
+  assign mem_read_addr = rvfi_mem_read_addr;
   assign mem_read_data = rvfi_mem_rdata;
 
   assign mem_write_valid = (rvfi_valid && |rvfi_mem_wmask);
-  assign mem_write_memWidth = mask2width(rvfi_mem_wmask);
-  assign mem_write_addr = rvfi_mem_addr + mask2offset(rvfi_mem_wmask);
-  assign mem_write_data = rvfi_mem_wdata >> (mask2offset(rvfi_mem_wmask) * 8);
+  assign mem_write_memWidth = rvfi_mem_write_width;
+  assign mem_write_addr = rvfi_mem_write_addr;
+  assign mem_write_data = rvfi_mem_wdata >> (rvfi_mem_write_addr[1:0] * 8);
 
   assign mode = rvfi_mode;
   assign csr_mvendorid = rvfi_csr_mvendorid_rdata;
@@ -940,6 +934,7 @@ module wrapper (
   assign csr_mhpmcounter29h = rvfi_csr_mhpmcounter29h_rdata;
   assign csr_mhpmcounter30h = rvfi_csr_mhpmcounter30h_rdata;
   assign csr_mhpmcounter31h = rvfi_csr_mhpmcounter31h_rdata;
+  assign csr_mcountinhibit = 'b0;
   assign csr_mhpmevent3 = rvfi_csr_mhpmevent3_rdata;
   assign csr_mhpmevent4 = rvfi_csr_mhpmevent4_rdata;
   assign csr_mhpmevent5 = rvfi_csr_mhpmevent5_rdata;
@@ -999,13 +994,33 @@ module wrapper (
   assign csr_mhpmevent30h = 32'b0;
   assign csr_mhpmevent31h = 32'b0;
 
-//   always @* begin
-//     if (!reset && rvfi_valid) begin
-// `ifndef NERV_TESTTRAP
-//       assume (!rvfi_trap);
-// `endif
-//     end
-//   end
+  /* CSR impl assume */
+  always @(*) begin
+    if (commit_valid && writeback_csrWr) begin
+      case (writeback_csrAddr)
+        12'h F11, 12'h F12, 12'h F13, 12'h F14, 12'h F15,
+        12'h 300, 12'h 301, 12'h 304, 12'h 305, 12'h 310,
+        12'h 340, 12'h 341, 12'h 342, 12'h 343, 12'h 344,
+        12'h 3A0, 12'h 3A1, 12'h 3A2, 12'h 3A3, 12'h 3A4,
+        12'h 3A5, 12'h 3A6, 12'h 3A7, 12'h 3A8, 12'h 3A9,
+        12'h 3AA, 12'h 3AB, 12'h 3AC, 12'h 3AD, 12'h 3AE,
+        12'h 3AF, 12'h 3B0, 12'h 3B1, 12'h 3B2, 12'h 3B3,
+        12'h 3B4, 12'h 3B5, 12'h 3B6, 12'h 3B7, 12'h 3B8,
+        12'h 3B9, 12'h 3BA, 12'h 3BB, 12'h 3BC, 12'h 3BD,
+        12'h 3BE, 12'h 3BF, 12'h 3C0, 12'h 3C1, 12'h 3C2,
+        12'h 3C3, 12'h 3C4, 12'h 3C5, 12'h 3C6, 12'h 3C7,
+        12'h 3C8, 12'h 3C9, 12'h 3CA, 12'h 3CB, 12'h 3CC,
+        12'h 3CD, 12'h 3CE, 12'h 3CF, 12'h 3D0, 12'h 3D1,
+        12'h 3D2, 12'h 3D3, 12'h 3D4, 12'h 3D5, 12'h 3D6,
+        12'h 3D7, 12'h 3D8, 12'h 3D9, 12'h 3DA, 12'h 3DB,
+        12'h 3DC, 12'h 3DD, 12'h 3DE, 12'h 3DF, 12'h 3E0,
+        12'h 3E1, 12'h 3E2, 12'h 3E3, 12'h 3E4, 12'h 3E5,
+        12'h 3E6, 12'h 3E7, 12'h 3E8, 12'h 3E9, 12'h 3EA,
+        12'h 3EB, 12'h 3EC, 12'h 3ED, 12'h 3EE, 12'h 3EF:  /* valid addr */;
+        default: assume(1'b0);
+      endcase
+    end
+  end
 
 `ifdef NERV_FAIRNESS
   reg [2:0] stalled = 0;

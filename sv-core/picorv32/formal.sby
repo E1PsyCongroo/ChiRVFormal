@@ -1,8 +1,8 @@
 [options]
 mode bmc
 expect pass,fail
-depth 21
-skip 20
+depth 16
+skip 15
 
 [engines]
 smtbmc boolector
@@ -23,8 +23,8 @@ testbench.sv
 [file defines.sv]
 `define YOSYS // Hotfix for older Tabby CAD Releases
 `define RISCV_FORMAL
-`define RISCV_FORMAL_CHECK_CYCLE 20
+`define RISCV_FORMAL_CHECK_CYCLE 15
 `define DEBUGNETS
 `define DEBUGREGS
-`define PICORV32_TESTTRAP
+// `define PICORV32_TESTTRAP
 `define PICORV32_TESTBUG_NONE

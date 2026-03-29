@@ -17,7 +17,7 @@ module testbench (
   (* keep *)wire [31:0] writeback_rdData;
   (* keep *)wire        writeback_csrWr;
   (* keep *)wire [11:0] writeback_csrAddr;
-  (* keep *)wire [63:0] writeback_csrNdata;
+  (* keep *)wire [31:0] writeback_csrNdata;
 
   (* keep *)wire        mem_read_valid;
   (* keep *)wire [31:0] mem_read_addr;

@@ -37,10 +37,10 @@
 	`NERV_CSR_VAL_MRO(mconfigptr,        12'h F15, 32'h 0000_0000)
 
 `define NERV_TRAP_SETUP_CSRS /* Machine Trap Setup CSRs */				\
-	`NERV_CSR_REG_MRW(mstatus,           12'h 300, 32'h 0000_0000)			\
+	`NERV_CSR_REG_MRW(mstatus,           12'h 300, 32'h 0000_1800)			\
 											\
 	/* misa can legally return all zeros */						\
-	`NERV_CSR_REG_MRW(misa,              12'h 301, 32'h 0000_0000)			\
+	`NERV_CSR_REG_MRW(misa,              12'h 301, 32'h 4000_0102)			\
 											\
 	/* medeleg and mideleg should only exist if S mode is available */		\
 /*	`NERV_CSR_REG_MRW(medeleg,           12'h 302, 32'h 0000_0000) */  		\
@@ -321,6 +321,9 @@ module nerv #(
 	output reg [31:0] rvfi_pc_wdata,
 
 `ifdef NERV_CSR
+  output reg        rvfi_csr_wr,
+  output reg [11:0] rvfi_csr_addr,
+  output reg [63:0] rvfi_csr_ndata,
 `define NERV_CSR_REG_MRW(NAME, ADDR, VALUE)			\
 	output reg [31:0] rvfi_csr_``NAME``_rmask,		\
 	output reg [31:0] rvfi_csr_``NAME``_wmask,		\
@@ -354,6 +357,11 @@ module nerv #(
 	output reg [ 3:0] rvfi_mem_wmask,
 	output reg [31:0] rvfi_mem_rdata,
 	output reg [31:0] rvfi_mem_wdata,
+
+	output reg [31:0] rvfi_mem_read_addr,
+	output reg [ 5:0] rvfi_mem_read_width,
+	output reg [31:0] rvfi_mem_write_addr,
+	output reg [ 5:0] rvfi_mem_write_width,
 
 `ifdef NERV_FAULT
 	output reg        rvfi_mem_fault,
@@ -391,11 +399,15 @@ module nerv #(
 	reg [31:0] mem_wr_addr;
 	reg [31:0] mem_wr_data;
 	reg [3:0] mem_wr_strb;
+	reg [5:0] mem_wr_width;
+	reg [31:0] mem_wr_unaligned_addr;
 
 	reg mem_rd_enable;
 	reg [31:0] mem_rd_addr;
 	reg [4:0] mem_rd_reg;
 	reg [4:0] mem_rd_func;
+	reg [5:0] mem_rd_width;
+	reg [31:0] mem_rd_unaligned_addr;
 
 	reg mem_rd_enable_q;
 	reg [4:0] mem_rd_reg_q;
@@ -563,7 +575,11 @@ module nerv #(
 	reg [31:0] csr_rdval;
 	reg [31:0] csr_next;
 
+	`ifdef NERV_FAULT
 	wire imem_valid = !mem_rd_enable_q && !mem_wr_enable_q && !imem_fault;
+	`else
+	wire imem_valid = !mem_rd_enable_q && !imem_fault;
+	`endif
 	wire [ 1:0] csr_mode = (running && imem_valid && !irq_num && insn_opcode == OPCODE_SYSTEM) ? insn_funct3[1:0] : 2'b 00; // 00=None, 01=RW, 10=RS, 11=RC
 	wire [11:0] csr_addr = imm_i;
 	wire [31:0] csr_rsval = insn_funct3[2] ? insn_rs1 : rs1_value;
@@ -676,11 +692,15 @@ module nerv #(
 		mem_wr_addr = 32'hx;
 		mem_wr_data = 32'hx;
 		mem_wr_strb = 4'hx;
+		mem_wr_width = 6'dx;
+		mem_wr_unaligned_addr = 32'hx;
 
 		mem_rd_enable = 0;
 		mem_rd_addr = 32'hx;
 		mem_rd_reg = 5'hx;
 		mem_rd_func = 5'hx;
+		mem_rd_width = 6'dx;
+		mem_rd_unaligned_addr = 32'hx;
 
 `ifdef NERV_CSR
 		csr_ack = 0;
@@ -799,14 +819,14 @@ module nerv #(
 
 	// misa - Machine ISA
 	// read-only 0 for unimplemented register
-	csr_misa_next[31:20] = 'b0; // MXL = 1 for XLEN=32
+	csr_misa_next[31:30] = 'b1; // MXL = 1 for XLEN=32
 	csr_misa_next[29:26] = 'b0; // 0
-	csr_misa_next[25:0] = 'b0; // Extensions enabled
+	csr_misa_next[25:0] = 'b1_0000_0010; // Extensions enabled
 
 	// mie - Machine Interrupt-Enable
 	// A bit in mie must be writable if the corresponding interrupt can ever become pending.
 	// Bits of mie that are not writable must be read-only 0.
-	//csr_mie_next[31:16] = 'b0; // bits 16 and above for custom/platform interrupts
+	csr_mie_next[31:16] = 'b0; // bits 16 and above for custom/platform interrupts
 	csr_mie_next[15:12] = 'b0; // 0
 	//csr_mie_next[11] = 'b0; // MEIE - Machine-level External Interrupt Enable
 	csr_mie_next[10] = 'b0; // 0
@@ -822,27 +842,27 @@ module nerv #(
 	csr_mie_next[0] = 'b0; // 0
 
 	// mip - Machine Interrupt-Pending
-	//csr_mip_next[31:16] = 'b0; // bits 16 and above for custom/platform interrupts
-	//csr_mip_next[15:12] = 'b0; // 0
-	//csr_mip_next[11] = 'b0; // MEIE - Machine-level External Interrupt Pending
-	//csr_mip_next[10] = 'b0; // 0
-	//csr_mip_next[9] = 'b0; // SEIE = 0 if no S
-	//csr_mip_next[8] = 'b0; // 0
-	//csr_mip_next[7] = 'b0; // MTIE - Machine Timer Interrupt Pending
-	//csr_mip_next[6] = 'b0; // 0
-	//csr_mip_next[5] = 'b0; // STIE = 0 if no S
-	//csr_mip_next[4] = 'b0; // 0
-	//csr_mip_next[3] = 'b0; // MSIE - Machine-level Software Interrupt Pending
-	//csr_mip_next[2] = 'b0; // 0
-	//csr_mip_next[1] = 'b0; // SSIE = 0 if no S
-	//csr_mip_next[0] = 'b0; // 0
-	csr_mip_next = irq & IRQ_MASK;
+	csr_mip_next[31:16] = 'b0; // bits 16 and above for custom/platform interrupts
+	csr_mip_next[15:12] = 'b0; // 0
+	// csr_mip_next[11] = 'b0; // MEIE - Machine-level External Interrupt Pending
+	csr_mip_next[10] = 'b0; // 0
+	csr_mip_next[9] = 'b0; // SEIE = 0 if no S
+	csr_mip_next[8] = 'b0; // 0
+	// csr_mip_next[7] = 'b0; // MTIE - Machine Timer Interrupt Pending
+	csr_mip_next[6] = 'b0; // 0
+	csr_mip_next[5] = 'b0; // STIE = 0 if no S
+	csr_mip_next[4] = 'b0; // 0
+	// csr_mip_next[3] = 'b0; // MSIE - Machine-level Software Interrupt Pending
+	csr_mip_next[2] = 'b0; // 0
+	csr_mip_next[1] = 'b0; // SSIE = 0 if no S
+	csr_mip_next[0] = 'b0; // 0
+	// csr_mip_next = irq & IRQ_MASK;
 
 	// mtvec - Machine Trap-Vector Base-Address
 	csr_mtvec_next[1] = 'b0; // MODE - keep high bit always 0
 
 	// mcause - keep these bits at 0
-	csr_mcause_next[30:5] ='b0;
+	// csr_mcause_next[30:5] ='b0;
 
 	// mepc - keep alignment
 	csr_mepc_next[1:0] = 'b0;
@@ -905,6 +925,7 @@ module nerv #(
 			// load from memory into rd: Load Byte, Load Halfword, Load Word, Load Byte Unsigned, Load Halfword Unsigned
 			OPCODE_LOAD: begin
 				mem_rd_addr = rs1_value + imm_i_sext;
+				mem_rd_unaligned_addr = mem_rd_addr;
 				casez ({insn_funct3, mem_rd_addr[1:0]})
 					5'b 000_zz /* LB  */,
 					5'b 001_z0 /* LH  */,
@@ -912,6 +933,13 @@ module nerv #(
 					5'b 100_zz /* LBU */,
 					5'b 101_z0 /* LHU */: begin
 						mem_rd_enable = 1;
+						case (insn_funct3)
+							3'b 000 /* LB  */,
+							3'b 100 /* LBU */: begin mem_rd_width = 6'd8; end
+							3'b 001 /* LH  */,
+							3'b 101 /* LHU */: begin mem_rd_width = 6'd16; end
+							3'b 010 /* LW  */: begin mem_rd_width = 6'd32; end
+						endcase
 						mem_rd_reg = insn_rd;
 						mem_rd_func = {mem_rd_addr[1:0], insn_funct3};
 						mem_rd_addr = {mem_rd_addr[31:2], 2'b 00};
@@ -922,6 +950,7 @@ module nerv #(
 			// store to memory instructions: Store Byte, Store Halfword, Store Word
 			OPCODE_STORE: begin
 				mem_wr_addr = rs1_value + imm_s_sext;
+				mem_wr_unaligned_addr = mem_wr_addr;
 				casez ({insn_funct3, mem_wr_addr[1:0]})
 					5'b 000_zz /* SB */,
 					5'b 001_z0 /* SH */,
@@ -929,10 +958,11 @@ module nerv #(
 						mem_wr_enable = 1;
 						mem_wr_data = rs2_value;
 						mem_wr_strb = 4'b 1111;
+						mem_wr_width = 6'd32;
 						case (insn_funct3)
-							3'b 000 /* SB  */: begin mem_wr_strb = 4'b 0001; end
-							3'b 001 /* SH  */: begin mem_wr_strb = 4'b 0011; end
-							3'b 010 /* SW  */: begin mem_wr_strb = 4'b 1111; end
+							3'b 000 /* SB  */: begin mem_wr_strb = 4'b 0001; mem_wr_width = 6'd8; end
+							3'b 001 /* SH  */: begin mem_wr_strb = 4'b 0011; mem_wr_width = 6'd16; end
+							3'b 010 /* SW  */: begin mem_wr_strb = 4'b 1111; mem_wr_width = 6'd32; end
 						endcase
 						mem_wr_data = mem_wr_data << (8*mem_wr_addr[1:0]);
 						mem_wr_strb = mem_wr_strb << mem_wr_addr[1:0];
@@ -1026,8 +1056,13 @@ module nerv #(
 					10'b 0010100_001 /* BSET */: begin next_wr = 1; next_rd = rs1_value | (1 << rs2_value[4:0]); end
 					// Zbkx: Crossbar permutations
 					// FIX BUG HERE
+					`ifdef NERV_TESTBUG_001
+					10'b 0010100_010 /* XPERM4 */: begin next_wr = 1; next_rd = 0; for (int i=0; i<8; i=i+1) next_rd[i*4+:4] = (rs1_value >> (rs2_value[i*4+:4])) & 4'h f; end
+					10'b 0010100_100 /* XPERM8 */: begin next_wr = 1; next_rd = 0; for (int i=0; i<4; i=i+1) next_rd[i*8+:8] = (rs1_value >> (rs2_value[i*8+:8])) & 8'h ff; end
+					`else
 					10'b 0010100_010 /* XPERM4 */: begin next_wr = 1; next_rd = 0; for (int i=0; i<8; i=i+1) next_rd[i*4+:4] = (rs1_value >> {rs2_value[i*4+:4], 2'b0}) & 4'h f; end
 					10'b 0010100_100 /* XPERM8 */: begin next_wr = 1; next_rd = 0; for (int i=0; i<4; i=i+1) next_rd[i*8+:8] = (rs1_value >> {rs2_value[i*8+:8], 3'b0}) & 8'h ff; end
+					`endif
 					default: illinsn = 1;
 				endcase
 			end
@@ -1084,7 +1119,7 @@ module nerv #(
 			if (dmem_fault) begin
 				cycle_dmem_fault = 1;
 				csr_mepc_next[31:2] = pc[31:2];
-				npc = csr_mtvec_value & ~3;
+				npc = csr_vtvec_value & ~3;
 				csr_mcause_next = mem_wr_enable_q ? MCAUSE_STORE_ACCESS_FAULT : MCAUSE_LOAD_ACCESS_FAULT;
 				csr_mcause_wdata = csr_mcause_next;
 				csr_mstatus_next[7] = csr_mstatus_value[3];  // save MIE to MPIE
@@ -1176,8 +1211,9 @@ module nerv #(
 `ifdef NERV_RVFI
 		rvfi_valid <= next_rvfi_valid;
 
-		if (cycle_intr)
+		if (cycle_intr) begin
 			next_rvfi_intr <= 1;
+		end
 
 		if (cycle_insn || cycle_late_wr || cycle_trap) begin
 			rvfi_rd_addr <= next_wr ? wr_rd : 0;
@@ -1212,11 +1248,21 @@ module nerv #(
 				endcase
 				rvfi_mem_wmask <= dmem_wstrb;
 				rvfi_mem_wdata <= dmem_wdata;
+
+				rvfi_mem_read_addr <= mem_rd_unaligned_addr;
+				rvfi_mem_read_width <= mem_rd_width;
+				rvfi_mem_write_addr <= mem_wr_unaligned_addr;
+				rvfi_mem_write_width <= mem_wr_width;
 			end else begin
 				rvfi_mem_addr <= 0;
 				rvfi_mem_rmask <= 0;
 				rvfi_mem_wmask <= 0;
 				rvfi_mem_wdata <= 0;
+
+				rvfi_mem_read_addr <= 0;
+				rvfi_mem_read_width <= 0;
+				rvfi_mem_write_addr <= 0;
+				rvfi_mem_write_width <= 0;
 			end
 `ifdef NERV_FAULT
 			rvfi_mem_fault <= imem_fault;
@@ -1268,6 +1314,37 @@ module nerv #(
 `undef NERV_CSR_VAL_MRO
 `undef NERV_CSR_ARR_DEF
 `undef NERV_CSR_ARR_MRW
+
+		rvfi_csr_wr <= csr_mode != 0;
+		rvfi_csr_addr <= csr_addr;
+		rvfi_csr_ndata <= 'hx;
+		unique case (1'b1)
+`define NERV_CSR_REG_MRW(NAME, ADDR, VALUE)		\
+			csr_``NAME``_sel: begin		\
+				rvfi_csr_ndata <= csr_``NAME``_next; \
+			end
+
+`define NERV_CSR_VAL_MRW(NAME, ADDR, VALUE)		\
+			csr_``NAME``_sel: begin		\
+				rvfi_csr_ndata <= csr_``NAME``_wdata; \
+			end
+
+`define NERV_CSR_VAL_MRO(NAME, ADDR, VALUE)		\
+			csr_``NAME``_sel: begin		\
+				rvfi_csr_ndata <= csr_``NAME``_value; \
+			end
+
+`define NERV_CSR_ARR_DEF(ARRAY, DEPTH)
+`define NERV_CSR_ARR_MRW(ARRAY, INDEX, NAME, ADDR)		\
+	`NERV_CSR_REG_MRW(NAME, ADDR, 32'h 0000_0000)
+
+`NERV_CSRS
+`undef NERV_CSR_REG_MRW
+`undef NERV_CSR_VAL_MRW
+`undef NERV_CSR_VAL_MRO
+`undef NERV_CSR_ARR_DEF
+`undef NERV_CSR_ARR_MRW
+		endcase
 `endif
 		end
 `endif

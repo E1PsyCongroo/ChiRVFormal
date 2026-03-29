@@ -183,7 +183,7 @@ class WriteBack()(implicit XLEN: Int) extends Bundle {
 
   val csrWr    = Bool()
   val csrAddr  = UInt(12.W)
-  val csrNdata = UInt(64.W)
+  val csrNdata = UInt(XLEN.W)
 }
 object WriteBack {
   def apply()(implicit XLEN: Int) = new WriteBack

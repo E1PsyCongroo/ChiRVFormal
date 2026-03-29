@@ -137,11 +137,17 @@ module picorv32 #(
 	output reg [31:0] rvfi_rd_wdata,
 	output reg [31:0] rvfi_pc_rdata,
 	output reg [31:0] rvfi_pc_wdata,
+
 	output reg [31:0] rvfi_mem_addr,
 	output reg [ 3:0] rvfi_mem_rmask,
 	output reg [ 3:0] rvfi_mem_wmask,
 	output reg [31:0] rvfi_mem_rdata,
 	output reg [31:0] rvfi_mem_wdata,
+
+	output reg [31:0] rvfi_mem_read_addr,
+	output reg [ 5:0] rvfi_mem_read_width,
+	output reg [31:0] rvfi_mem_write_addr,
+	output reg [ 5:0] rvfi_mem_write_width,
 
 	output reg [63:0] rvfi_csr_mcycle_rmask,
 	output reg [63:0] rvfi_csr_mcycle_wmask,
@@ -187,6 +193,8 @@ module picorv32 #(
 	wire [31:0] dbg_mem_wdata = mem_wdata;
 	wire [ 3:0] dbg_mem_wstrb = mem_wstrb;
 	wire [31:0] dbg_mem_rdata = mem_rdata;
+	wire [31:0] dbg_mem_unaligned_addr;
+	wire [5:0]	dbg_mem_width;
 
 	assign pcpi_rs1 = reg_op1;
 	assign pcpi_rs2 = reg_op2;
@@ -348,15 +356,19 @@ module picorv32 #(
 
 	// Memory Interface
 
+	reg [31:0] mem_unaligned_addr;
 	reg [1:0] mem_state;
 	reg [1:0] mem_wordsize;
+	reg [5:0] mem_width;
 	reg [31:0] mem_rdata_word;
-	reg [31:0] mem_rmask;
 	reg [31:0] mem_rdata_q;
 	reg mem_do_prefetch;
 	reg mem_do_rinst;
 	reg mem_do_rdata;
 	reg mem_do_wdata;
+
+	assign dbg_mem_unaligned_addr = mem_unaligned_addr;
+	assign dbg_mem_width = mem_width;
 
 	wire mem_xfer;
 	reg mem_la_secondword, mem_la_firstword_reg, last_mem_valid;
@@ -381,6 +393,8 @@ module picorv32 #(
 	assign mem_la_read = resetn && ((!mem_la_use_prefetched_high_word && !mem_state && (mem_do_rinst || mem_do_prefetch || mem_do_rdata)) ||
 			(COMPRESSED_ISA && mem_xfer && (!last_mem_valid ? mem_la_firstword : mem_la_firstword_reg) && !mem_la_secondword && &mem_rdata_latched[1:0]));
 	assign mem_la_addr = (mem_do_prefetch || mem_do_rinst) ? {next_pc[31:2] + mem_la_firstword_xfer, 2'b00} : {reg_op1[31:2], 2'b00};
+	wire [31:0] mem_la_unaligned_addr  = (mem_do_prefetch || mem_do_rinst) ? {next_pc[31:2] + mem_la_firstword_xfer, 2'b00} : reg_op1;
+	reg [5:0] mem_la_width;
 
 	assign mem_rdata_latched_noshuffle = (mem_xfer || LATCHED_MEM_RDATA) ? mem_rdata : mem_rdata_q;
 
@@ -405,11 +419,13 @@ module picorv32 #(
 			0: begin
 				mem_la_wdata = reg_op2;
 				mem_la_wstrb = 4'b1111;
+				mem_la_width = 6'd32;
 				mem_rdata_word = mem_rdata;
 			end
 			1: begin
 				mem_la_wdata = {2{reg_op2[15:0]}};
 				mem_la_wstrb = reg_op1[1] ? 4'b1100 : 4'b0011;
+				mem_la_width = 6'd16;
 				case (reg_op1[1])
 					1'b0: mem_rdata_word = {16'b0, mem_rdata[15: 0]};
 					1'b1: mem_rdata_word = {16'b0, mem_rdata[31:16]};
@@ -418,6 +434,7 @@ module picorv32 #(
 			2: begin
 				mem_la_wdata = {4{reg_op2[7:0]}};
 				mem_la_wstrb = 4'b0001 << reg_op1[1:0];
+				mem_la_width = 6'd8;
 				case (reg_op1[1:0])
 					2'b00: mem_rdata_word = {24'b0, mem_rdata[ 7: 0]};
 					2'b01: mem_rdata_word = {24'b0, mem_rdata[15: 8]};
@@ -574,7 +591,9 @@ module picorv32 #(
 		end else begin
 			if (mem_la_read || mem_la_write) begin
 				mem_addr <= mem_la_addr;
+				mem_unaligned_addr <= mem_la_unaligned_addr;
 				mem_wstrb <= mem_la_wstrb & {4{mem_la_write}};
+				mem_width <= mem_la_width;
 			end
 			if (mem_la_write) begin
 				mem_wdata <= mem_la_wdata;
@@ -585,13 +604,11 @@ module picorv32 #(
 						mem_valid <= !mem_la_use_prefetched_high_word;
 						mem_instr <= mem_do_prefetch || mem_do_rinst;
 						mem_wstrb <= 0;
-						mem_rmask <= mem_la_wstrb;
 						mem_state <= 1;
 					end
 					if (mem_do_wdata) begin
 						mem_valid <= 1;
 						mem_instr <= 0;
-						mem_rmask <= 0;
 						mem_state <= 2;
 					end
 				end
@@ -2057,13 +2074,23 @@ module picorv32 #(
 				rvfi_mem_wmask <= 0;
 				rvfi_mem_rdata <= 0;
 				rvfi_mem_wdata <= 0;
+
+				rvfi_mem_read_addr <= 0;
+				rvfi_mem_read_width <= 0;
+				rvfi_mem_write_addr <= 0;
+				rvfi_mem_write_width <= 0;
 			end else
 			if (dbg_mem_valid && dbg_mem_ready) begin
 				rvfi_mem_addr <= dbg_mem_addr;
-				rvfi_mem_rmask <= mem_rmask;
+				rvfi_mem_rmask <= dbg_mem_wstrb ? 0 : ~0;
 				rvfi_mem_wmask <= dbg_mem_wstrb;
 				rvfi_mem_rdata <= dbg_mem_rdata;
 				rvfi_mem_wdata <= dbg_mem_wdata;
+
+				rvfi_mem_read_addr <= dbg_mem_unaligned_addr;
+				rvfi_mem_read_width <= dbg_mem_width;
+				rvfi_mem_write_addr <= dbg_mem_unaligned_addr;
+				rvfi_mem_write_width <= dbg_mem_width;
 			end
 		end
 	end

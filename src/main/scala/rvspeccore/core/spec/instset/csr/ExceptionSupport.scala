@@ -227,18 +227,20 @@ trait ExceptionSupport extends BaseCore with CheckTool {
       }
       // printf("Mtvec mode:%x addr:%x\n",now.privilege.csr.mtvec(1,0), now.privilege.csr.mtvec(MXLEN - 1, 2) << 2)
       // jump
-      switch(now.privilege.csr.mtvec(1, 0)) {
-        is(0.U(2.W)) {
-          // setPc := true.B
-          setPC((now.privilege.csr.mtvec(MXLEN - 1, 2)) << 2)
-          // printf("NextPC:%x\n", next.pc)
-        }
-        is(1.U(2.W)) {
-          setPC(now.privilege.csr.mtvec(MXLEN - 1, 2) + zeroExt(exceptionCode, MXLEN) << 2)
-          // printf("NextPC:%x\n", next.pc)
-        }
-        // >= 2 reserved
-      }
+      // switch(now.privilege.csr.mtvec(1, 0)) {
+      //   is(0.U(2.W)) {
+      //     setPC((now.privilege.csr.mtvec(MXLEN - 1, 2)) << 2)
+      //     // printf("NextPC:%x\n", next.pc)
+      //   }
+      //   is(1.U(2.W)) {
+      //     setPC(now.privilege.csr.mtvec(MXLEN - 1, 2) + zeroExt(exceptionCode, MXLEN) << 2)
+      //     // printf("NextPC:%x\n", next.pc)
+      //   }
+      //   // >= 2 reserved
+      // }
+
+      // all synchronous exceptions into machine mode cause the pc to be set to the address in the BASE field
+      setPC(now.privilege.csr.mtvec(MXLEN - 1, 2) ## 0.U(2.W))
     }
 
     def doRaiseExceptionS(exceptionCode: UInt, MXLEN: Int): Unit = {
@@ -299,18 +301,22 @@ trait ExceptionSupport extends BaseCore with CheckTool {
       // printf("Stvec mode:%x addr:%x\n",now.privilege.csr.stvec(1,0), now.privilege.csr.stvec(MXLEN - 1, 2) << 2)
       // jump
       // 还需要使用不同的东西进行跳转
-      switch(now.privilege.csr.stvec(1, 0)) {
-        is(0.U(2.W)) {
-          // setPc := true.B
-          setPC((now.privilege.csr.stvec(MXLEN - 1, 2)) << 2)
-          // printf("NextPC:%x\n", next.pc)
-        }
-        is(1.U(2.W)) {
-          setPC(now.privilege.csr.stvec(MXLEN - 1, 2) + zeroExt(exceptionCode, MXLEN) << 2)
-          // printf("NextPC:%x\n", next.pc)
-        }
-        // >= 2 reserved
-      }
+      // switch(now.privilege.csr.stvec(1, 0)) {
+      //   is(0.U(2.W)) {
+      //     // setPc := true.B
+      //     setPC((now.privilege.csr.stvec(MXLEN - 1, 2)) << 2)
+      //     // printf("NextPC:%x\n", next.pc)
+      //   }
+      //   is(1.U(2.W)) {
+      //     setPC(now.privilege.csr.stvec(MXLEN - 1, 2) + zeroExt(exceptionCode, MXLEN) << 2)
+      //     // printf("NextPC:%x\n", next.pc)
+      //   }
+      //   // >= 2 reserved
+      // }
+
+
+      // all synchronous exceptions into machine mode cause the pc to be set to the address in the BASE field
+      setPC(now.privilege.csr.stvec(MXLEN - 1, 2) ## 0.U(2.W))
     }
 
   }

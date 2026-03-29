@@ -16,12 +16,72 @@ object PrivilegeLevel extends ChiselEnum {
   def initLevel = Machine
 }
 
+class MisaStruct(implicit XLEN: Int) extends Bundle {
+  val mxl        = UInt(2.W)           // MXLEN - 1 ~ MXLEN - 2
+  val pad        = UInt((XLEN - 28).W) // MXLEN - 3 ~ 26
+  val extensions = UInt(26.W)          // 25 ~ 0
+}
+
+class MstatusStruct(implicit XLEN: Int) extends Bundle {
+  val sd    = UInt(1.W) // MXLEN - 1
+  val pad5  = if (XLEN == 64) UInt(20.W) else null
+  val mdt   = if (XLEN == 64) UInt(1.W) else null
+  val mpelp = if (XLEN == 64) UInt(1.W) else null
+  val pad4  = if (XLEN == 64) UInt(1.W) else null
+  val mpv   = if (XLEN == 64) UInt(1.W) else null
+  val gva   = if (XLEN == 64) UInt(1.W) else null
+  val mbe   = if (XLEN == 64) UInt(1.W) else null
+  val sbe   = if (XLEN == 64) UInt(1.W) else null
+  val sxl   = if (XLEN == 64) UInt(2.W) else null
+  val uxl   = if (XLEN == 64) UInt(2.W) else null
+  val pad3  = if (XLEN == 64) UInt(7.W) else UInt(6.W)
+  val sdt   = UInt(1.W) // 24
+  val spelp = UInt(1.W) // 23
+  val tsr   = UInt(1.W) // 22
+  val tw    = UInt(1.W) // 21
+  val tvm   = UInt(1.W) // 20
+  val mxr   = UInt(1.W) // 19
+  val sum   = UInt(1.W) // 18
+  val mprv  = UInt(1.W) // 17
+  val xs    = UInt(2.W) // 16 ~ 15
+  val fs    = UInt(2.W) // 14 ~ 13
+  val mpp   = UInt(2.W) // 12 ~ 11
+  val vs    = UInt(2.W) // 10 ~ 9
+  val spp   = UInt(1.W) // 8
+  val mpie  = UInt(1.W) // 7
+  val ube   = UInt(1.W) // 6
+  val spie  = UInt(1.W) // 5
+  val pad2  = UInt(1.W) // 4
+  val mie   = UInt(1.W) // 3
+  val pad1  = UInt(1.W) // 2
+  val sie   = UInt(1.W) // 1
+  val pad0  = UInt(1.W) // 0
+}
+
+class MstatushStruct(implicit XLEN: Int) extends Bundle {
+  val pad2  = UInt(21.W) // 31 ~ 11
+  val mdt   = UInt(1.W)  // 10
+  val mpelp = UInt(1.W)  // 9
+  val pad1  = UInt(1.W)  // 8
+  val mpv   = UInt(1.W)  // 7
+  val gva   = UInt(1.W)  // 6
+  val mbe   = UInt(1.W)  // 5
+  val sbe   = UInt(1.W)  // 4
+  val pad0  = UInt(4.W)  // 3 ~ 0
+}
+
+class SatpStruct(implicit XLEN: Int) extends Bundle {
+  val mode = if (XLEN == 32) UInt(1.W) else UInt(4.W)
+  val asid = if (XLEN == 32) UInt(9.W) else UInt(16.W)
+  val ppn  = if (XLEN == 32) UInt(22.W) else UInt(44.W)
+}
+
 case class CSRInfo(
     addr: UInt,
     width: Option[Int],
-    wfn: Option[Int => UInt => UInt],
-    rmask: Int => UInt,
-    wmask: Int => UInt
+    rmask: RVConfig => UInt,
+    wmask: RVConfig => UInt,
+    wse: Option[RVConfig => UInt => UInt]
 ) {
   def makeUInt(implicit XLEN: Int) = width match {
     case Some(value) => UInt(value.W)
@@ -33,11 +93,11 @@ object CSRInfo {
   def apply(
       addrStr: String,
       width: Option[Int] = None,
-      wfn: Option[Int => UInt => UInt] = Some(_ => x => x),
-      rmask: Int => UInt = XLEN => Fill(XLEN, 1.U(1.W)),
-      wmask: Int => UInt = XLEN => Fill(XLEN, 1.U(1.W))
+      rmask: RVConfig => UInt = config => Fill(config.XLEN, 1.B),
+      wmask: RVConfig => UInt = config => Fill(config.XLEN, 1.B),
+      wse: Option[RVConfig => UInt => UInt] = Some(_ => csr => csr)
   ): CSRInfo = {
-    new CSRInfo(addrStr.U(12.W), width, wfn, rmask, wmask)
+    new CSRInfo(addrStr.U(12.W), width, rmask, wmask, wse)
   }
 }
 
@@ -55,9 +115,10 @@ object CSRInfo {
   */
 trait CSRInfos {
   // SideEffect
-  val mstatusUpdateSideEffect: Option[Int => UInt => UInt] = Some(implicit XLEN =>
+  val mstatusUpdateSideEffect: Option[RVConfig => UInt => UInt] = Some(implicit config =>
     mstatus => {
-      val mstatusOld = WireInit(mstatus.asTypeOf(new MstatusStruct))
+      implicit val XLEN = config.XLEN
+      val mstatusOld    = WireInit(mstatus.asTypeOf(new MstatusStruct))
       // mstatusOld.mpp := "b11".U
       // if (XLEN == 64){
       //   // FIXME: nutshell 认为u mode 的uxl为全0 存疑 暂时修改参考模型 使其不报错
@@ -129,16 +190,19 @@ trait CSRInfos {
   // MaskedRegMap(Sstatus, mstatus, sstatusWmask, mstatusUpdateSideEffect, sstatusRmask),
   val sstatus = CSRInfo(
     "h100",
-    None,
-    mstatusUpdateSideEffect,
-    (XLEN: Int) => "hc6122".U(XLEN.W) | "h8000000300018000".U,
-    (XLEN: Int) => "hc6122".U(XLEN.W)
+    rmask = config => "hc6122".U(config.XLEN.W) | "h8000000300018000".U,
+    wmask = config => "hc6122".U(config.XLEN.W),
+    wse = mstatusUpdateSideEffect
   ) // TODO
 
   // MaskedRegMap(Sie, mie, sieMask, MaskedRegMap.NoSideEffect, sieMask),
-  val sie        = CSRInfo("h104", rmask = XLEN => "h222".U(XLEN.W), wmask = XLEN => "h222".U(XLEN.W)) // TODO
-  val stvec      = CSRInfo("h105")                                                                     // TODO
-  val scounteren = CSRInfo("h106")                                                                     // TODO
+  val sie = CSRInfo(
+    "h104",
+    rmask = config => "h222".U(config.XLEN.W),
+    wmask = config => "h222".U(config.XLEN.W)
+  ) // TODO
+  val stvec      = CSRInfo("h105") // TODO
+  val scounteren = CSRInfo("h106") // TODO
 
   // - Supervisor Configuration
   val senvcfg = CSRInfo("h10A") // TODO
@@ -154,8 +218,8 @@ trait CSRInfos {
   // MaskedRegMap(Sip, mip.asUInt, sipMask, MaskedRegMap.Unwritable, sipMask),
   val sip = CSRInfo(
     "h144",
-    rmask = XLEN => "h222".U(XLEN.W),
-    wmask = XLEN => "h222".U(XLEN.W)
+    rmask = config => "h222".U(config.XLEN.W),
+    wmask = config => "h222".U(config.XLEN.W)
   ) // FIXME: h222 is a error impl 忘了为啥说是错误的了
   val scountovf = CSRInfo("hDA0") // TODO
 
@@ -193,32 +257,106 @@ trait CSRInfos {
   /* RISC-V machine-level CSR */
 
   // - Machine Information Registers
-  val mvendorid  = CSRInfo("hf11", wfn = None)
-  val marchid    = CSRInfo("hf12", wfn = None)
-  val mimpid     = CSRInfo("hf13", wfn = None)
-  val mhartid    = CSRInfo("hf14", wfn = None)
-  val mconfigptr = CSRInfo("hf15", wfn = None)
+  val mvendorid  = CSRInfo("hf11", width = Some(32), wmask = config => 0.U(config.XLEN.W))
+  val marchid    = CSRInfo("hf12", wmask = config => 0.U(config.XLEN.W))
+  val mimpid     = CSRInfo("hf13", wmask = config => 0.U(config.XLEN.W))
+  val mhartid    = CSRInfo("hf14", wmask = config => 0.U(config.XLEN.W))
+  val mconfigptr = CSRInfo("hf15", wmask = config => 0.U(config.XLEN.W))
 
   // - Machine Trap Setup
-  val mstatus = CSRInfo("h300", wfn = mstatusUpdateSideEffect) // TODO
-  // val misa       = CSRInfo("h301", None, Fill(XLEN, 1.U(1.W)), null, 0.U(XLEN.W)) // UnwritableMask implement
-  val misa       = CSRInfo("h301")
-  val medeleg    = CSRInfo("h302", wmask = XLEN => "hbbff".U) // FIXME: NutShell: medeleg[11] is read-only zero
-  val mideleg    = CSRInfo("h303", wmask = XLEN => "h222".U)  // FIXME: simple impl use nutshell write mask
-  val mie        = CSRInfo("h304")                            // TODO
-  val mtvec      = CSRInfo("h305")                            // TODO
-  val mcounteren = CSRInfo("h306")                            // TODO
-  val mstatush   = CSRInfo("h310")                            // TODO
-  val medelegh   = CSRInfo("h312")
+  val mstatus = CSRInfo(
+    "h300",
+    rmask = config =>
+      if (config.XLEN == 64) "hffff_ffff_ffff_ffff".U(config.XLEN.W)
+      else
+        "h0000_1888".U(config.XLEN.W) |
+          (if (config.extensions.U) "h0022_0040".U(config.XLEN.W) else 0.U(config.XLEN.W)) |
+          (if (config.extensions.S) "h007c_0122".U(config.XLEN.W) else 0.U(config.XLEN.W)),
+    wmask = config =>
+      if (config.XLEN == 64) "hffff_ffff_ffff_ffff".U(config.XLEN.W)
+      else
+        "h0000_0088".U(config.XLEN.W) |
+          (if (config.extensions.U) "h0022_1840".U(config.XLEN.W) else 0.U(config.XLEN.W)) |
+          (if (config.extensions.S) "h007c_0122".U(config.XLEN.W) else 0.U(config.XLEN.W)),
+    wse = mstatusUpdateSideEffect
+  ) // TODO
+  val misa = CSRInfo(
+    "h301",
+    rmask = config => if (config.XLEN == 64) "hc000_0000_03ff_ffff".U(config.XLEN.W) else "hc3ff_ffff".U(config.XLEN.W),
+    wmask = config => 0.U(config.XLEN.W)
+      // 0.U(config.XLEN.W) |
+      //   (if (config.extensions.B) 1.U(config.XLEN.W) << 1 else 0.U(config.XLEN.W)) |
+      //   (if (config.extensions.C) 1.U(config.XLEN.W) << 2 else 0.U(config.XLEN.W)) |
+      //   (if (config.extensions.M) 1.U(config.XLEN.W) << 12 else 0.U(config.XLEN.W)) |
+      //   (if (config.extensions.S) 1.U(config.XLEN.W) << 18 else 0.U(config.XLEN.W)) |
+      //   (if (config.extensions.U) 1.U(config.XLEN.W) << 20 else 0.U(config.XLEN.W))
+  )
+  val medeleg =
+    CSRInfo(
+      "h302",
+      wmask = config => "hbbff".U(config.XLEN.W)
+    ) // FIXME: NutShell: medeleg[11] is read-only zero
+  val mideleg = CSRInfo(
+    "h303",
+    wmask = config => "h222".U(config.XLEN.W)
+  ) // FIXME: simple impl use nutshell write mask
+  val mie = CSRInfo(
+    "h304",
+    rmask = config =>
+      "h0000_0888".U(config.XLEN.W) |
+        (if (config.extensions.S) "h0000_0222".U(config.XLEN.W) else 0.U(config.XLEN.W)),
+    wmask = config =>
+      "h0000_0888".U(config.XLEN.W) |
+        (if (config.extensions.S) "h0000_0222".U(config.XLEN.W) else 0.U(config.XLEN.W))
+  )
+  val mtvec = CSRInfo(
+    "h305",
+    rmask = config => if (config.XLEN == 64) "hffff_ffff_ffff_fffd".U(config.XLEN.W) else "hffff_fffd".U(config.XLEN.W),
+    wmask = config => if (config.XLEN == 64) "hffff_ffff_ffff_fffd".U(config.XLEN.W) else "hffff_fffd".U(config.XLEN.W)
+  )
+  val mcounteren = CSRInfo("h306") // TODO
+  val mstatush = CSRInfo(
+    "h310",
+    width = Some(32),
+    rmask = config =>
+      "h0000_0020".U(config.XLEN.W) |
+        (if (config.extensions.S) "h0000_0010".U(config.XLEN.W) else 0.U(config.XLEN.W)),
+    wmask = config => 0.U(config.XLEN.W)
+    // wmask = config => "h0000_0020".U(config.XLEN.W) | (if (config.extensions.S) "h0000_0010".U(config.XLEN.W) else 0.U(config.XLEN.W))
+  ) // TODO
+  val medelegh = CSRInfo("h312")
 
   // - Machine Trap Handling
-  val mscratch = CSRInfo("h340")                           // TODO
-  val mepc     = CSRInfo("h341")
-  val mcause   = CSRInfo("h342")                           // TODO
-  val mtval    = CSRInfo("h343")
-  val mip      = CSRInfo("h344", wmask = XLEN => "h77f".U) // FIXME: same as nutshell for wmask
-  val mtinst   = CSRInfo("h34A")
-  val mtval2   = CSRInfo("h34B")
+  val mscratch = CSRInfo("h340") // TODO
+  val mepc = CSRInfo(
+    "h341",
+    rmask = config =>
+      if (config.XLEN == 64)
+        "hffff_ffff_ffff_fffc".U(config.XLEN.W) |
+          (if (config.extensions.C) "h0000_0000_0000_0002".U(config.XLEN.W) else 0.U(config.XLEN.W))
+      else
+        "hffff_fffc".U(config.XLEN.W) |
+          (if (config.extensions.C) "h0000_0002".U(config.XLEN.W) else 0.U(config.XLEN.W)),
+    wmask = config =>
+      if (config.XLEN == 64)
+        "hffff_ffff_ffff_fffc".U(config.XLEN.W) |
+          (if (config.extensions.C) "h0000_0000_0000_0002".U(config.XLEN.W) else 0.U(config.XLEN.W))
+      else
+        "hffff_fffc".U(config.XLEN.W) | (if (config.extensions.C) "h0000_0002".U(config.XLEN.W) else 0.U(config.XLEN.W))
+  )
+  val mcause = CSRInfo("h342") // TODO
+  val mtval  = CSRInfo("h343")
+  val mip = CSRInfo(
+    "h344",
+    rmask = config =>
+      "h0000_0888".U(config.XLEN.W) |
+        (if (config.extensions.S) "h0000_0222".U(config.XLEN.W) else 0.U(config.XLEN.W)),
+    wmask = config =>
+      "h0000_0888".U(config.XLEN.W) |
+        (if (config.extensions.S) "h0000_0222".U(config.XLEN.W) else 0.U(config.XLEN.W))
+  )
+  val mtinst = CSRInfo("h34A")
+  val mtval2 = CSRInfo("h34B")
 
   // - Machine Indirect
   // TODO
@@ -254,22 +392,46 @@ trait CSRInfos {
   val mnstatus  = CSRInfo("h743")
 
   // - Machine Counter/Timers
-  val mcycle       = CSRInfo("hb00")
-  val minstret     = CSRInfo("hb02")
-  val mhpmcounter  = (3 to 31).map(i => CSRInfo(s"h${(0xb00 + i).toHexString}"))
-  val mcycleh      = CSRInfo("hb80")
-  val minstreth    = CSRInfo("hb82")
-  val mhpmcounterh = (3 to 31).map(i => CSRInfo(s"h${(0xb80 + i).toHexString}"))
+  val mcycle   = CSRInfo("hb00")
+  val minstret = CSRInfo("hb02")
+  val mhpmcounter = (3 to 31).map(i =>
+    CSRInfo(
+      s"h${(0xb00 + i).toHexString}",
+      rmask = config => 0.U(config.XLEN.W),
+      wmask = config => 0.U(config.XLEN.W)
+    )
+  )
+  val mcycleh   = CSRInfo("hb80")
+  val minstreth = CSRInfo("hb82")
+  val mhpmcounterh = (3 to 31).map(i =>
+    CSRInfo(
+      s"h${(0xb80 + i).toHexString}",
+      rmask = config => 0.U(config.XLEN.W),
+      wmask = config => 0.U(config.XLEN.W)
+    )
+  )
 
   // - Machine Counter Setup
   val mcountinhibit = CSRInfo("h320")
   // TODO
-  val mcyclecfg    = CSRInfo("h321")
-  val minstretcfg  = CSRInfo("h322")
-  val mhpmevent    = (3 to 31).map(i => CSRInfo(s"h${(0x320 + i).toHexString}"))
+  val mcyclecfg   = CSRInfo("h321")
+  val minstretcfg = CSRInfo("h322")
+  val mhpmevent = (3 to 31).map(i =>
+    CSRInfo(
+      s"h${(0x320 + i).toHexString}",
+      rmask = config => 0.U(config.XLEN.W),
+      wmask = config => 0.U(config.XLEN.W)
+    )
+  )
   val mcyclecfgh   = CSRInfo("h721")
   val minstretcfgh = CSRInfo("h722")
-  val mhpmeventh   = (3 to 31).map(i => CSRInfo(s"h${(0x720 + i).toHexString}"))
+  val mhpmeventh = (3 to 31).map(i =>
+    CSRInfo(
+      s"h${(0x720 + i).toHexString}",
+      rmask = config => 0.U(config.XLEN.W),
+      wmask = config => 0.U(config.XLEN.W)
+    )
+  )
 
   // - Machine Control Transfer Records Configuration
   // TODO
@@ -517,6 +679,32 @@ class CSR()(implicit config: RVConfig) extends Bundle with IgnoreSeqInBundle {
       2.U(2.W) -> 64.U(8.W)
     )
   )
+  def SXLEN = if (config.extensions.S)
+    MuxLookup(MXLEN, 32.U(8.W))(
+      Seq(
+        32.U(8.W) -> 32.U(8.W),
+        64.U(8.W) -> MuxLookup(mstatus.asTypeOf(new MstatusStruct).sxl, 32.U(8.W))(
+          Seq(
+            1.U(2.W) -> 32.U(8.W),
+            2.U(2.W) -> 64.U(8.W)
+          )
+        )
+      )
+    )
+  else null
+  def UXLEN = if (config.extensions.U)
+    MuxLookup(MXLEN, 32.U(8.W))(
+      Seq(
+        32.U(8.W) -> 32.U(8.W),
+        64.U(8.W) -> MuxLookup(mstatus.asTypeOf(new MstatusStruct).uxl, 32.U(8.W))(
+          Seq(
+            1.U(2.W) -> 32.U(8.W),
+            2.U(2.W) -> 64.U(8.W)
+          )
+        )
+      )
+    )
+  else null
   // the instruction-address alignment constraint the implementation enforces
   def IALIGN = Mux(misa(2), 16.U(8.W), 32.U(8.W))
   // the maximum instruction length supported by an implementation
@@ -528,6 +716,8 @@ class CSR()(implicit config: RVConfig) extends Bundle with IgnoreSeqInBundle {
     */
   def vTable = List(
     MXLEN,
+    SXLEN,
+    UXLEN,
     IALIGN,
     ILEN
   )
@@ -652,40 +842,6 @@ object CSR {
 //   1   |    01    |    Supervisor    |      S
 //   2   |    10    |     Reserved     |
 //   3   |    11    |     Machine      |      M
-class MstatusStruct(implicit XLEN: Int) extends Bundle {
-  // 记录Mstatus寄存器的状态 并使用Bundle按序构造寄存器
-  val sd   = Output(UInt(1.W))
-  val pad1 = if (XLEN == 64) Output(UInt(25.W)) else null
-  val mbe  = if (XLEN == 64) Output(UInt(1.W)) else null
-  val sbe  = if (XLEN == 64) Output(UInt(1.W)) else null
-  val sxl  = if (XLEN == 64) Output(UInt(2.W)) else null
-  val uxl  = if (XLEN == 64) Output(UInt(2.W)) else null
-  val pad0 = if (XLEN == 64) Output(UInt(9.W)) else Output(UInt(8.W))
-  val tsr  = Output(UInt(1.W)) // 22
-  val tw   = Output(UInt(1.W)) // 21
-  val tvm  = Output(UInt(1.W)) // 20
-  val mxr  = Output(UInt(1.W)) // 19
-  val sum  = Output(UInt(1.W)) // 18
-  val mprv = Output(UInt(1.W)) // 17
-  val xs   = Output(UInt(2.W)) // 16 ~ 15
-  val fs   = Output(UInt(2.W)) // 14 ~ 13
-  val mpp  = Output(UInt(2.W)) // 12 ~ 11
-  val vs   = Output(UInt(2.W)) // 10 ~ 9
-  val spp  = Output(UInt(1.W)) // 8
-  val mpie = Output(UInt(1.W)) // 7
-  val ube  = Output(UInt(1.W)) // 6
-  val spie = Output(UInt(1.W)) // 5
-  val pad2 = Output(UInt(1.W)) // 4
-  val mie  = Output(UInt(1.W)) // 3
-  val pad3 = Output(UInt(1.W)) // 2
-  val sie  = Output(UInt(1.W)) // 1
-  val pad4 = Output(UInt(1.W)) // 0
-}
-class SatpStruct(implicit XLEN: Int) extends Bundle {
-  val mode = if (XLEN == 32) UInt(1.W) else UInt(4.W)
-  val asid = if (XLEN == 32) UInt(9.W) else UInt(16.W)
-  val ppn  = if (XLEN == 32) UInt(22.W) else UInt(44.W)
-}
 
 class SV39PTE() extends Bundle {
   val reserved = UInt(10.W)
