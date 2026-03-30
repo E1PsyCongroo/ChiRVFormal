@@ -19,8 +19,8 @@ class ConnectHelperSpec extends AnyFlatSpec with ChiselScalatestTester {
     checker.io.instCommit.npc   := DontCare
 
     ConnectHelper.setRegSource(state.reg)
-    val csr = ConnectHelper.makeCSRSource()
-    csr := state.privilege.csr
+    val privilege = ConnectHelper.makePrivilegeSource()
+    privilege := state.privilege
 
     if (config.formal.checkMem) {
       val memSource = ConnectHelper.makeMemSource()
