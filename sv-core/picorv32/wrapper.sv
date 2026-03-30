@@ -16,7 +16,7 @@ module wrapper (
     output [31:0] writeback_rdData,
     output        writeback_csrWr,
     output [11:0] writeback_csrAddr,
-    output [63:0] writeback_csrNdata,
+    output [31:0] writeback_csrNdata,
 
     output        mem_read_valid,
     output [31:0] mem_read_addr,

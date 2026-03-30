@@ -11,12 +11,12 @@ import rvspeccore.core.spec.instset.csr._
 object ConnectHelper {
 
   object UniqueId {
-    val uniqueIdReg: String   = "ConnectChecker_UniqueIdReg"
-    val uniqueIdMem: String   = "ConnectChecker_UniqueIdMem"
-    val uniqueIdCSR: String   = "ConnectChecker_UniqueIdCSR"
-    val uniqueIdEvent: String = "ConnectChecker_UniqueIdEvent"
-    val uniqueIdITLB: String  = "ConnectChecker_UniqueIdITLB"
-    val uniqueIdDTLB: String  = "ConnectChecker_UniqueIdDTLB"
+    val uniqueIdReg: String       = "ConnectChecker_UniqueIdReg"
+    val uniqueIdMem: String       = "ConnectChecker_UniqueIdMem"
+    val uniqueIdPrivilege: String = "ConnectChecker_UniqueIdPrivilege"
+    val uniqueIdEvent: String     = "ConnectChecker_UniqueIdEvent"
+    val uniqueIdITLB: String      = "ConnectChecker_UniqueIdITLB"
+    val uniqueIdDTLB: String      = "ConnectChecker_UniqueIdDTLB"
   }
   import UniqueId._
 
@@ -63,10 +63,10 @@ object ConnectHelper {
     mem
   }
 
-  def makeCSRSource()(implicit XLEN: Int, config: RVConfig): CSR = {
-    val csr = CSR.wireInit()
-    BoringUtils.addSource(csr, uniqueIdCSR)
-    csr
+  def makePrivilegeSource()(implicit XLEN: Int, config: RVConfig): PrivilegedState = {
+    val privilege = PrivilegedState.wireInit()
+    BoringUtils.addSource(privilege, uniqueIdPrivilege)
+    privilege
   }
 
   def makeTLBSource(isDTLB: Boolean)(implicit XLEN: Int): TLBSig = {
@@ -90,13 +90,13 @@ object ConnectHelper {
     BoringUtils.addSink(regVec, uniqueIdReg)
     checker.io.state.reg := regVec
 
-    // csr
-    val csr = Wire(CSR())
-    csr := DontCare
-    BoringUtils.addSink(csr, uniqueIdCSR)
-    checker.io.state.privilege.csr  := csr
-    checker.io.state.privilege.mode := DontCare
+    // privilege
+    val privilege = Wire(PrivilegedState())
+    privilege := DontCare
+    BoringUtils.addSink(privilege, uniqueIdPrivilege)
+    checker.io.state.privilege := privilege
 
+    // mem
     if (config.formal.checkMem) {
       val mem = Wire(MemSig())
       mem := DontCare
@@ -120,15 +120,14 @@ object ConnectHelper {
       checker: CheckerWithWB,
       memDelay: Int
   )(implicit XLEN: Int, config: RVConfig) = {
-    // init
-    val privilege = PrivilegedState.wireInit()
-    checker.io.privilege := privilege
+    // reg
+    if (config.formal.arbitraryRegFile) ArbitraryRegFile.init
 
-    // csr
-    val csr = Wire(CSR())
-    csr := DontCare
-    BoringUtils.addSink(csr, uniqueIdCSR)
-    checker.io.privilege.csr := csr
+    // privilege
+    val privilege = Wire(PrivilegedState())
+    privilege := DontCare
+    BoringUtils.addSink(privilege, uniqueIdPrivilege)
+    checker.io.privilege := privilege
 
     // mem
     if (config.formal.checkMem) {

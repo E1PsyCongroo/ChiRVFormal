@@ -314,7 +314,6 @@ trait ExceptionSupport extends BaseCore with CheckTool {
       //   // >= 2 reserved
       // }
 
-
       // all synchronous exceptions into machine mode cause the pc to be set to the address in the BASE field
       setPC(now.privilege.csr.stvec(MXLEN - 1, 2) ## 0.U(2.W))
     }

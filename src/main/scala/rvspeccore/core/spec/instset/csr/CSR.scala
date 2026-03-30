@@ -284,12 +284,12 @@ trait CSRInfos {
     "h301",
     rmask = config => if (config.XLEN == 64) "hc000_0000_03ff_ffff".U(config.XLEN.W) else "hc3ff_ffff".U(config.XLEN.W),
     wmask = config => 0.U(config.XLEN.W)
-      // 0.U(config.XLEN.W) |
-      //   (if (config.extensions.B) 1.U(config.XLEN.W) << 1 else 0.U(config.XLEN.W)) |
-      //   (if (config.extensions.C) 1.U(config.XLEN.W) << 2 else 0.U(config.XLEN.W)) |
-      //   (if (config.extensions.M) 1.U(config.XLEN.W) << 12 else 0.U(config.XLEN.W)) |
-      //   (if (config.extensions.S) 1.U(config.XLEN.W) << 18 else 0.U(config.XLEN.W)) |
-      //   (if (config.extensions.U) 1.U(config.XLEN.W) << 20 else 0.U(config.XLEN.W))
+    // 0.U(config.XLEN.W) |
+    //   (if (config.extensions.B) 1.U(config.XLEN.W) << 1 else 0.U(config.XLEN.W)) |
+    //   (if (config.extensions.C) 1.U(config.XLEN.W) << 2 else 0.U(config.XLEN.W)) |
+    //   (if (config.extensions.M) 1.U(config.XLEN.W) << 12 else 0.U(config.XLEN.W)) |
+    //   (if (config.extensions.S) 1.U(config.XLEN.W) << 18 else 0.U(config.XLEN.W)) |
+    //   (if (config.extensions.U) 1.U(config.XLEN.W) << 20 else 0.U(config.XLEN.W))
   )
   val medeleg =
     CSRInfo(

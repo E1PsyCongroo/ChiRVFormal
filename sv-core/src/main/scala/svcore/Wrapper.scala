@@ -534,7 +534,7 @@ class WriteBackChecker(enableReg: Boolean = true, singleInstMode: Option[Inst] =
   if (config.formal.checkMem) { check.io.mem.get := mem.get }
   if (config.formal.checkCSRs) {
     check.io.privilege.mode := mode.get
-    check.io.privilege.csr := csr.get.toCSRWire()
+    check.io.privilege.csr  := csr.get.toCSRWire()
   } else {
     check.io.privilege.mode := PrivilegeLevel.Machine.asUInt
     check.io.privilege.csr  := CSR.wireInit()
