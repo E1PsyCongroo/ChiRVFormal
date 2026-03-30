@@ -123,6 +123,10 @@ object ConnectHelper {
     // reg
     if (config.formal.arbitraryRegFile) ArbitraryRegFile.init
 
+    val regVec = Wire(Vec(32, UInt(XLEN.W)))
+    regVec := DontCare
+    BoringUtils.addSink(regVec, uniqueIdReg)
+
     // privilege
     val privilege = Wire(PrivilegedState())
     privilege := DontCare

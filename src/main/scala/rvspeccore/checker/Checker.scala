@@ -197,7 +197,7 @@ object WriteBack {
   * before DUT execute the instruction. wb contains some writeback signal.
   */
 class CheckerWithWB(
-    enableReg: Boolean = true,
+    enableReg: Boolean = false,
     singleInstMode: Option[Inst] = None
 )(implicit
     config: RVConfig
@@ -217,7 +217,6 @@ class CheckerWithWB(
   })
   // link to spec core
   val specCore = Module(new RiscvTrans(singleInstMode))
-
   specCore.io.now                           := 0.U.asTypeOf(new State)
   specCore.io.now.privilege                 := io.privilege
   specCore.io.now.pc                        := io.instCommit.pc
@@ -226,9 +225,15 @@ class CheckerWithWB(
   when(io.writeback.rs1Addr =/= io.writeback.rs2Addr) {
     specCore.io.now.reg(io.writeback.rs2Addr) := io.writeback.rs2Data
   }
-
   specCore.io.valid := checkInst
   specCore.io.inst  := io.instCommit.inst
+
+  // initial another io.mem.get.Anotherread
+  if (config.functions.tlb) {
+    for (i <- 0 until 6) {
+      specCore.io.tlb.get.Anotherread(i).data := DontCare
+    }
+  }
 
   val specCommit = specCore.io.commit
   val specMem    = specCore.io.mem
@@ -298,8 +303,10 @@ class CheckerWithWB(
 
     when(!regDelay(specCommit.exception)) {
       assert(regDelay(io.writeback.rdAddr) === regDelay(specCommit.rdAddr))
-      assert(regDelay(io.writeback.rdData) === regDelay(specCommit.rdData))
-      assert(regDelay(io.writeback.rdData) === regDelay(specCore.io.next.reg(io.writeback.rdAddr)))
+      when(io.writeback.rdAddr =/= 0.U) {
+        assert(regDelay(io.writeback.rdData) === regDelay(specCommit.rdData))
+        assert(regDelay(io.writeback.rdData) === regDelay(specCore.io.next.reg(io.writeback.rdAddr)))
+      }
 
       // try to verify two operands of instruction
       when(regDelay(specCommit.readRs1)) {

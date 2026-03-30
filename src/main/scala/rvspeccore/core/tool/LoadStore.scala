@@ -99,7 +99,7 @@ trait LoadStore extends BaseCore with MMU with ExceptionSupport {
   def memWrite(addr: UInt, memWidth: UInt, data: UInt): Bool = {
     require(addr.getWidth == XLEN, s"${addr.getWidth} != ${XLEN}")
     val aligned = addrAligned(addr, memWidth)
-    when(!aligned) { raiseException(MExceptionCode.loadAddressMisaligned) }
+    when(!aligned) { raiseException(MExceptionCode.storeOrAMOAddressMisaligned) }
     val wAddr = WireInit(addr)
     val excp  = WireInit(!aligned)
     if (config.functions.tlb) {
