@@ -63,7 +63,7 @@ object ConnectHelper {
     mem
   }
 
-  def makePrivilegeSource()(implicit XLEN: Int, config: RVConfig): PrivilegedState = {
+  def makePrivilegeSource()(implicit config: RVConfig): PrivilegedState = {
     val privilege = PrivilegedState.wireInit()
     BoringUtils.addSource(privilege, uniqueIdPrivilege)
     privilege
