@@ -7,7 +7,7 @@ import chisel3.util.switch
 
 case class Args(
     configFile: String = "config.json",
-    model: String = "writeback",
+    model: String = "action",
     targetDir: String = "build",
     listModels: Boolean = false
 )
@@ -27,10 +27,10 @@ object Args {
         .valueName("<model>")
         .action((x, c) => c.copy(model = x))
         .validate {
-          case "writeback" | "state" | "assume" => success
-          case _                                => failure("unsupported model (supported: writeback, state, assume)")
+          case "action" | "state" | "assume" => success
+          case _                                => failure("unsupported model (supported: action, state, assume)")
         }
-        .text("check model to generate (default: writeback)"),
+        .text("check model to generate (default: action)"),
       opt[String]('t', "target-dir")
         .valueName("<directory>")
         .action((x, c) => c.copy(targetDir = x))
@@ -47,7 +47,7 @@ object Main extends App {
   OParser.parse(Args.parser, args, Args()) match {
     case Some(args) if args.listModels =>
       println("Supported models:")
-      println("  - writeback")
+      println("  - action")
       println("  - state")
       println("  - assume")
       sys.exit(0)
@@ -56,9 +56,9 @@ object Main extends App {
         case util.Success(config) =>
           val chiselStage = new chisel3.stage.ChiselStage
           args.model match {
-            case "writeback" =>
+            case "action" =>
               chiselStage.emitSystemVerilog(
-                new WriteBackChecker(config.regDelay, config.getSingleInstMode)(config.toRVConfig),
+                new ActionChecker(config.regDelay, config.getSingleInstMode)(config.toRVConfig),
                 Array(
                   "--target-dir",
                   args.targetDir,

@@ -517,7 +517,7 @@ object CSRWrapperIO {
   def apply()(implicit config: RVConfig): CSRWrapperIO = new CSRWrapperIO
 }
 
-class WriteBackChecker(enableReg: Boolean = true, singleInstMode: Option[Inst] = None)(implicit config: RVConfig)
+class ActionChecker(enableReg: Boolean = true, singleInstMode: Option[Inst] = None)(implicit config: RVConfig)
     extends Module {
   implicit val XLEN: Int = config.XLEN
 
@@ -527,7 +527,7 @@ class WriteBackChecker(enableReg: Boolean = true, singleInstMode: Option[Inst] =
   val mode      = if (config.formal.checkCSRs) Some(IO(Input(UInt(2.W)))) else None
   val csr       = if (config.formal.checkCSRs) Some(IO(Input(CSRWrapperIO()))) else None
 
-  val check = Module(new CheckerWithWB(enableReg, singleInstMode))
+  val check = Module(new CheckerWithAction(enableReg, singleInstMode))
 
   check.io.instCommit := commit
   check.io.writeback  := writeback

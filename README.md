@@ -260,12 +260,8 @@ sby -f formal.sby
 
 ## 📂 Examples
 
-- NutShell integration:
-  [https://github.com/iscas-tis/nutshell-fv](https://github.com/iscas-tis/nutshell-fv)
-
-- Verilog examples:
-  - [nerv](sv-core/nerv/)
-  - [picorv32](sv-core/picorv32/)
+- NutShell integration: [/nutshell-fv](https://github.com/iscas-tis/nutshell-fv)
+- Verilog examples: [sv-core-fv](https://github.com/E1PsyCongroo/sv-core-fv)
 
 ## 📄 Publications
 

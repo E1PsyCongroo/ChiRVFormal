@@ -438,7 +438,7 @@ GitHub Actions 可以在每次 push 代码到 GitHub 的时候自动运行验证
 我们修改了 NutShell 代码以获取验证所需的处理器信息，并与参考模型进行了同步。
 最终通过 [ChiselTest](https://github.com/ucb-bar/chiseltest) 提供的接口调用了 BMC 算法进行验证。
 
-[sv-core](sv-core/src/main/scala/svcore/) 是使用该项目验证 `Verilog` 设计的例子，我们通过 `firtool` 将参考模型转换为 `SystemVerilog` 设计, 为 [nerv](sv-core/nerv/) 和 [picov32](sv-core/picorv32/) 提供了 `wrapper` 以获取验证所需的信号，最终使用 `SymbiYosys` 工具使用 `yosys-smtbmc` 引擎调用 `boolector` 求解器进行验证。
+[sv-core](https://github.com/E1PsyCongroo/sv-core-fv) 是使用该项目验证 `Verilog` 设计的例子，我们通过 `firtool` 将参考模型转换为 `SystemVerilog` 设计, 为 [nerv](https://github.com/YosysHQ/nerv) 和 [picov32](https://github.com/YosysHQ/picorv32) 提供了 `wrapper` 以获取验证所需的信号，最终使用 `SymbiYosys` 工具使用 `yosys-smtbmc` 引擎调用 `boolector` 求解器进行验证。
 
 ## 出版物
 
