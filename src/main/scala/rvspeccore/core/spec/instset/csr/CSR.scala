@@ -673,7 +673,7 @@ class CSR()(implicit config: RVConfig) extends Bundle with IgnoreSeqInBundle {
   }
 
   // the native base integer ISA width
-  def MXLEN = MuxLookup(misa(31, 30), 32.U(8.W))(
+  def MXLEN = MuxLookup(misa.asTypeOf(new MisaStruct).mxl, 32.U(8.W))(
     Seq(
       1.U(2.W) -> 32.U(8.W),
       2.U(2.W) -> 64.U(8.W)

@@ -19,7 +19,7 @@ trait CSRSupport extends BaseCore with ExceptionSupport with CheckTool {
     val has: Bool    = MuxLookup(addr, false.B)(now.privilege.csr.table.map { x => x.info.addr -> true.B })
     val nowCSR: UInt = MuxLookup(addr, 0.U)(now.privilege.csr.table.map { x => x.info.addr -> x.signal })
     val rmask: UInt  = MuxLookup(addr, 0.U)(now.privilege.csr.table.map { x => x.info.addr -> x.info.rmask(config) })
-//     printf("[Debug]CSR_READ:(Have:%d, nowCSR:%x, Addr: %x %x)\n",has,nowCSR,addr,next.reg(1))
+    // printf("[Debug]CSR_READ:(Have:%d, nowCSR:%x, Addr:%x, rmask:%x)\n",has,nowCSR,addr,rmask)
     val rData = WireInit(0.U(XLEN.W))
 
     def doCSRRead(MXLEN: Int): Unit = {
