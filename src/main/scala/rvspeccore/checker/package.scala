@@ -1,5 +1,9 @@
 package rvspeccore
 
 package object checker {
-  type CheckerWithResult = CheckerWithState
+  type ConnectCheckerResult = ConnectHelper.type
+  val ConnectCheckerResult = ConnectHelper
+
+  type ConnectCheckerWb = ConnectHelper.type
+  val ConnectCheckerWb = ConnectHelper
 }

@@ -111,7 +111,7 @@ case class RVConfig(configs: (String, Any)*) {
 
   // Other Functions Config
   object functions {
-    protected val raw = cfgs.getOrElse("functions", Seq[String]()).asInstanceOf[Seq[String]]
+    val raw = cfgs.getOrElse("functions", Seq[String]()).asInstanceOf[Seq[String]]
     require(
       raw.toSet.subsetOf(acceptKeys("functions")),
       s"Unknown functions in RVConfig: ${(raw.toSet -- acceptKeys("functions")).mkString(",")}"
@@ -123,7 +123,7 @@ case class RVConfig(configs: (String, Any)*) {
 
   // Formal
   object formal {
-    protected val raw = cfgs.getOrElse("formal", Seq[String]()).asInstanceOf[Seq[String]]
+    val raw = cfgs.getOrElse("formal", Seq[String]()).asInstanceOf[Seq[String]]
     require(
       raw.toSet.subsetOf(acceptKeys("formal")),
       s"Unknown formal in RVConfig: ${(raw.toSet -- acceptKeys("formal")).mkString(",")}"

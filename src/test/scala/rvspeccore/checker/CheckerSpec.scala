@@ -99,8 +99,8 @@ class CheckerWithStateSpec extends AnyFlatSpec with ChiselScalatestTester {
 
 // We have to extract some signals from RiscvCore, but it certainly modify the structure of the RiscvCore
 // This can't be solved until we discuss with YiCheng about it.
-class CheckerWithWBSpec extends AnyFlatSpec with ChiselScalatestTester {
-  behavior of "CheckerWithWB"
+class CheckerWithActionSpec extends AnyFlatSpec with ChiselScalatestTester {
+  behavior of "CheckerWithAction"
 
   class TestCore(enableReg: Boolean = false)(implicit val config: RVConfig) extends RiscvCore {
     val writeback = Wire(WriteBack())
@@ -117,7 +117,7 @@ class CheckerWithWBSpec extends AnyFlatSpec with ChiselScalatestTester {
     writeback.csrAddr  := trans.io.commit.csrAddr
     writeback.csrNdata := trans.io.commit.csrNdata
 
-    val checker = Module(new CheckerWithWB(enableReg))
+    val checker = Module(new CheckerWithAction(enableReg))
     checker.io.instCommit.valid := io.valid
     checker.io.instCommit.excp  := trans.io.commit.exception
     checker.io.instCommit.inst  := io.inst

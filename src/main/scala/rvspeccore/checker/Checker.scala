@@ -7,6 +7,7 @@ import rvspeccore.core._
 import rvspeccore.core.spec._
 import rvspeccore.core.spec.instset.csr._
 import rvspeccore.core.tool._
+import dataclass.since
 
 class InstCommit()(implicit XLEN: Int) extends Bundle {
   val valid = Bool()
@@ -196,7 +197,7 @@ object WriteBack {
   * register with privilege information. privilege contains some register value
   * before DUT execute the instruction. wb contains some writeback signal.
   */
-class CheckerWithWB(
+class CheckerWithAction(
     enableReg: Boolean = false,
     singleInstMode: Option[Inst] = None
 )(implicit
@@ -333,4 +334,145 @@ class CheckerWithWB(
     }
   }
 
+}
+
+@deprecated(
+  message = "CheckerWithResult is deprecated. " +
+    "Use CheckerWithState with RVConfig.formal (e.g., enable \"CheckMem\") instead.",
+  since = "riscvspeccore 1.3"
+)
+class CheckerWithResult(
+    val checkMem: Boolean = true,
+    enableReg: Boolean = false,
+    singleInstMode: Option[Inst] = None
+)(implicit
+    config: RVConfig
+) extends Checker {
+  val io = IO(new Bundle {
+    val instCommit = Input(new Bundle {
+      val valid = Bool()
+      val inst  = UInt(32.W)
+      val pc    = UInt(XLEN.W)
+      val npc   = UInt(XLEN.W)
+    })
+    val result = Input(new Bundle {
+      val pc  = UInt(XLEN.W)
+      val reg = Vec(32, UInt(XLEN.W))
+      val privilege = new Bundle {
+        val csr = CSR()
+        val internal = new Bundle {
+          val privilegeMode = UInt(2.W)
+        }
+      }
+    })
+    val event = Input(new Bundle {
+      val valid         = Bool()
+      val intrNO        = UInt(XLEN.W)
+      val cause         = UInt(XLEN.W)
+      val exceptionPC   = UInt(XLEN.W)
+      val exceptionInst = UInt(XLEN.W)
+    })
+    val mem     = if (checkMem) Some(Input(new MemIO)) else None
+    val dtlbmem = if (checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
+    val itlbmem = if (checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
+  })
+
+  private val newFormal = {
+    val raw = config.formal.raw
+    val updated =
+      if (checkMem) raw.toSet + "CheckMem"
+      else raw.toSet - "CheckMem"
+    updated.toSeq
+  }
+
+  private val newConfig = RVConfig(
+    config.XLEN,
+    config.extensions.raw,
+    config.fakeExtensions.raw,
+    config.initValue,
+    config.functions.raw,
+    newFormal
+  )
+
+  val checker = Module(new CheckerWithState(enableReg, singleInstMode)(newConfig))
+
+  checker.io.instCommit.valid := io.instCommit.valid
+  checker.io.instCommit.excp  := io.event.valid
+  checker.io.instCommit.inst  := io.instCommit.inst
+  checker.io.instCommit.pc    := io.instCommit.pc
+  checker.io.instCommit.npc   := io.instCommit.npc
+
+  checker.io.state.pc             := io.result.pc
+  checker.io.state.reg            := io.result.reg
+  checker.io.state.privilege.csr  := io.result.privilege.csr
+  checker.io.state.privilege.mode := io.result.privilege.internal.privilegeMode
+
+  checker.io.mem.foreach(_ := io.mem.get)
+  checker.io.dtlbmem.foreach(_ := io.dtlbmem.get)
+  checker.io.itlbmem.foreach(_ := io.itlbmem.get)
+}
+
+@deprecated(
+  message = "CheckerWithWB is deprecated. " +
+    "Use CheckerWithAction with RVConfig.formal (e.g., enable \"CheckMem\" \"checkNPC\") instead.",
+  since = "riscvspeccore 1.3"
+)
+class CheckerWithWB(
+    val checkMem: Boolean = true,
+    enableReg: Boolean = false,
+    singleInstMode: Option[Inst] = None,
+    checkNPC: Boolean = false
+)(implicit
+    config: RVConfig
+) extends Checker {
+  val io = IO(new Bundle {
+    val instCommit = Input(new Bundle() {
+      val valid = Bool()
+      val inst  = UInt(32.W)
+      val pc    = UInt(XLEN.W)
+      val npc   = UInt(XLEN.W)
+    })
+    val wb = Input(WriteBack())
+    val privilege = Input(new Bundle() {
+      val csr = CSR()
+      val internal = new Bundle {
+        val privilegeMode = UInt(2.W)
+      }
+    })
+    val mem     = if (checkMem) Some(Input(new MemIO)) else None
+    val dtlbmem = if (checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
+    val itlbmem = if (checkMem && config.functions.tlb) Some(Input(new TLBSig)) else None
+  })
+
+  private val newFormal = {
+    val raw     = config.formal.raw
+    val updated = raw.toSet
+    updated.toSeq
+  }
+
+  private val newConfig = RVConfig(
+    config.XLEN,
+    config.extensions.raw,
+    config.fakeExtensions.raw,
+    config.initValue,
+    config.functions.raw,
+    newFormal
+  )
+
+  val checker = Module(new CheckerWithAction(enableReg, singleInstMode)(newConfig))
+
+  checker.io.instCommit.valid := io.instCommit.valid
+  checker.io.instCommit.excp  := false.B
+  checker.io.instCommit.inst  := io.instCommit.inst
+  checker.io.instCommit.pc    := io.instCommit.pc
+  checker.io.instCommit.npc   := io.instCommit.npc
+
+  checker.io.writeback := io.wb
+
+  checker.io.privilege.mode := io.privilege.internal.privilegeMode
+  checker.io.privilege.csr  := io.privilege.csr
+
+  checker.io.mem.foreach(_ := io.mem.get)
+  checker.io.dtlbmem.foreach(_ := io.dtlbmem.get)
+  checker.io.itlbmem.foreach(_ := io.itlbmem.get)
 }
