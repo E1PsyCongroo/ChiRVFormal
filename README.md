@@ -260,8 +260,8 @@ sby -f formal.sby
 
 ## 📂 Examples
 
-- NutShell integration: [/nutshell-fv](https://github.com/iscas-tis/nutshell-fv)
-- Verilog examples: [sv-core-fv](https://github.com/E1PsyCongroo/sv-core-fv)
+- NutShell integration: [nutshell-fv](https://github.com/iscas-tis/nutshell-fv)
+- SystemVerilog/Verilog examples: [sv-core-fv](https://github.com/E1PsyCongroo/sv-core-fv)
 
 ## 📄 Publications
 
