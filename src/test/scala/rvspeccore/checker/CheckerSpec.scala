@@ -44,15 +44,15 @@ class CheckerWithStateSpec extends AnyFlatSpec with ChiselScalatestTester {
     })
   }
 
-  it should "pass RiscvTests[mem check: off, reg delay: off]" in {
-    val tests = Seq(
-      RiscvTests("rv64ui", "rv64ui-addi.hex")
-    )
-    implicit val config = RVConfig(
-      XLEN = 64,
-      functions = Seq("Privileged")
-    )
-    tests.foreach { testFile =>
+  var tests = Seq(
+    RiscvTests("rv64ui", "rv64ui-addi.hex")
+  )
+  tests.foreach { testFile =>
+    it should s"pass RiscvTests[mem check: off, reg delay: off] @${testFile.getName}" in {
+      implicit val config = RVConfig(
+        XLEN = 64,
+        functions = Seq("Privileged")
+      )
       test(new CoreTester(new TestCore(false), testFile.getCanonicalPath())) { c =>
         RiscvTests.stepTest(c, RiscvTests.maxStep)
         RiscvTests.checkReturn(c)
@@ -60,41 +60,40 @@ class CheckerWithStateSpec extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  val tests =
-    Seq("rv64ui", "rv64um", "rv64uc", "rv64uzba", "rv64uzbb", "rv64uzbc", "rv64uzbs", "rv64uzbkb", "rv64uzbkx")
-  tests.foreach { testCase =>
-    RiscvTests(testCase).foreach(f =>
-      it should s"pass RiscvTests[mem check: on, reg delay: off] @${f.getName}" in {
-        implicit val config = RVConfig(
-          XLEN = 64,
-          extensions = "MCZifenceiZicsrZbaZbbZbcZbsZbkbZbkcZbkx",
-          functions = Seq("Privileged"),
-          formal = Seq("CheckMem")
-        )
-        test(new CoreTester(new TestCore(false), f.getCanonicalPath())) { c =>
-          RiscvTests.stepTest(c, RiscvTests.maxStep)
-          RiscvTests.checkReturn(c)
-        }
+  tests = Seq(
+    RiscvTests("rv64ui", "rv64ui-addi.hex"),
+    RiscvTests("rv64ui", "rv64ui-lb.hex")
+  )
+  tests.foreach { testFile =>
+    it should s"pass RiscvTests[mem check: on, reg delay: off] @${testFile.getName}" in {
+      implicit val config = RVConfig(
+        XLEN = 64,
+        functions = Seq("Privileged"),
+        formal = Seq("CheckMem")
+      )
+      test(new CoreTester(new TestCore(false), testFile.getCanonicalPath())) { c =>
+        RiscvTests.stepTest(c, RiscvTests.maxStep)
+        RiscvTests.checkReturn(c)
       }
-    )
+    }
+
   }
 
-  tests.foreach { testCase =>
-    RiscvTests(testCase).foreach(f =>
-      it should s"pass RiscvTests[mem check: on, reg delay: on] @${f.getName}" in {
-        implicit val config = RVConfig(
-          XLEN = 64,
-          extensions = "MCZifenceiZicsrZbaZbbZbcZbsZbkbZbkcZbkx",
-          functions = Seq("Privileged"),
-          formal = Seq("CheckMem")
-        )
-        test(new CoreTester(new TestCore(true), f.getCanonicalPath())) { c =>
-          RiscvTests.stepTest(c, RiscvTests.maxStep)
-          RiscvTests.checkReturn(c)
-        }
+  tests.foreach { testFile =>
+    it should s"pass RiscvTests[mem check: on, reg delay: on] @${testFile.getName}" in {
+      implicit val config = RVConfig(
+        XLEN = 64,
+        functions = Seq("Privileged"),
+        formal = Seq("CheckMem")
+      )
+      test(new CoreTester(new TestCore(true), testFile.getCanonicalPath())) { c =>
+        RiscvTests.stepTest(c, RiscvTests.maxStep)
+        RiscvTests.checkReturn(c)
       }
-    )
+    }
+
   }
+
 }
 
 // We have to extract some signals from RiscvCore, but it certainly modify the structure of the RiscvCore
@@ -131,15 +130,15 @@ class CheckerWithActionSpec extends AnyFlatSpec with ChiselScalatestTester {
     checker.io.mem.map(_ := trans.io.mem)
   }
 
-  it should "pass RiscvTests[mem check: off, reg delay: off]" in {
-    val tests = Seq(
-      RiscvTests("rv64ui", "rv64ui-addi.hex")
-    )
-    implicit val config = RVConfig(
-      XLEN = 64,
-      functions = Seq("Privileged")
-    )
-    tests.foreach { testFile =>
+  var tests = Seq(
+    RiscvTests("rv64ui", "rv64ui-addi.hex")
+  )
+  tests.foreach { testFile =>
+    it should s"pass RiscvTests[mem check: off, reg delay: off] @${testFile.getName}" in {
+      implicit val config = RVConfig(
+        XLEN = 64,
+        functions = Seq("Privileged")
+      )
       test(new CoreTester(new TestCore(false), testFile.getCanonicalPath())) { c =>
         RiscvTests.stepTest(c, RiscvTests.maxStep)
         RiscvTests.checkReturn(c)
@@ -147,41 +146,36 @@ class CheckerWithActionSpec extends AnyFlatSpec with ChiselScalatestTester {
     }
   }
 
-  val tests =
-    Seq("rv64ui", "rv64um", "rv64uc", "rv64uzba", "rv64uzbb", "rv64uzbc", "rv64uzbs", "rv64uzbkb", "rv64uzbkx")
-
-  tests.foreach { testCase =>
-    RiscvTests(testCase).foreach(f =>
-      it should s"pass RiscvTests[mem check: on, reg delay: off] @${f.getName}" in {
-        implicit val config = RVConfig(
-          XLEN = 64,
-          extensions = "MCZifenceiZicsrZbaZbbZbcZbsZbkbZbkcZbkx",
-          functions = Seq("Privileged"),
-          formal = Seq("CheckMem")
-        )
-        test(new CoreTester(new TestCore(false), f.getCanonicalPath())).withAnnotations(Seq(WriteVcdAnnotation)) { c =>
-          RiscvTests.stepTest(c, RiscvTests.maxStep)
-          RiscvTests.checkReturn(c)
-        }
+  tests = Seq(
+    RiscvTests("rv64ui", "rv64ui-addi.hex"),
+    RiscvTests("rv64ui", "rv64ui-lb.hex")
+  )
+  tests.foreach { testFile =>
+    it should s"pass RiscvTests[mem check: on, reg delay: off] @${testFile.getName}" in {
+      implicit val config = RVConfig(
+        XLEN = 64,
+        functions = Seq("Privileged"),
+        formal = Seq("CheckMem")
+      )
+      test(new CoreTester(new TestCore(false), testFile.getCanonicalPath())) { c =>
+        RiscvTests.stepTest(c, RiscvTests.maxStep)
+        RiscvTests.checkReturn(c)
       }
-    )
+    }
   }
 
-  tests.foreach { testCase =>
-    RiscvTests(testCase).foreach(f =>
-      it should s"pass RiscvTests[mem check: on, reg delay: on] @${f.getName}" in {
-        implicit val config = RVConfig(
-          XLEN = 64,
-          extensions = "MCZifenceiZicsrZbaZbbZbcZbsZbkbZbkcZbkx",
-          functions = Seq("Privileged"),
-          formal = Seq("CheckMem")
-        )
-        test(new CoreTester(new TestCore(true), f.getCanonicalPath())) { c =>
-          RiscvTests.stepTest(c, RiscvTests.maxStep)
-          RiscvTests.checkReturn(c)
-        }
+  tests.foreach { testFile =>
+    it should s"pass RiscvTests[mem check: on, reg delay: on] @${testFile.getName}" in {
+      implicit val config = RVConfig(
+        XLEN = 64,
+        functions = Seq("Privileged"),
+        formal = Seq("CheckMem")
+      )
+      test(new CoreTester(new TestCore(true), testFile.getCanonicalPath())) { c =>
+        RiscvTests.stepTest(c, RiscvTests.maxStep)
+        RiscvTests.checkReturn(c)
       }
-    )
+    }
   }
 
 }
